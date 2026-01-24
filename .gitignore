@@ -5,6 +5,8 @@ target/
 !**/src/test/**/target/
 target/
 docs/
+.postman/
+postman/
 
 ### STS ###
 .apt_generated
