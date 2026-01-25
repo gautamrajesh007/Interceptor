@@ -52,12 +52,12 @@ proxy:
     - GRANT
     - REVOKE
     - CREATE EXTENSION
+    - UPDATE
+    - INSERT
 
   # Allowed keywords that bypass blocking
   allowed-keywords:
     - SELECT
-    - INSERT
-    - UPDATE
     - CREATE TABLE
 
 # Admin dashboard
