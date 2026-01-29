@@ -7,8 +7,8 @@ spring:
   # Interceptor's own database (for users, audit, blocked queries)
   datasource:
     url: "jdbc:postgresql://localhost:5434/interceptor"
-    username: interceptor
-    password: interceptor123
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -28,8 +28,8 @@ spring:
   # Spring security login credentials
   security:
     user:
-      name: user
-      password: testpass@123
+      name: ${SECURITY_USERNAME}
+      password: ${SECURITY_PASSWORD}
 
 logging:
   level:
@@ -66,7 +66,7 @@ server:
 
 # JWT configuration
 jwt:
-  secret:  your-256-bit-secret-key-change-in-production-please
+  secret:  ${JWT_KEY}
   expiration: 86400000  # 24 hours in milliseconds
 
 # Peer approval configuration
