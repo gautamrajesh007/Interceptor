@@ -9,10 +9,13 @@ import java.util.List;
 public class ConnectionState {
 
     public final String connId;
+
     public volatile Channel serverChannel;
     public volatile boolean inExtendedBatch = false;
-    public volatile StringBuilder batchQuery = new StringBuilder();
-    public volatile List<ByteBuf> batchBuffers = new ArrayList<>();
+    public volatile boolean sslNegotiated = false;
+
+    public StringBuilder batchQuery = new StringBuilder();
+    public List<ByteBuf> batchBuffers = new ArrayList<>();
 
     public ConnectionState(String connId) {
         this.connId = connId;
@@ -20,13 +23,12 @@ public class ConnectionState {
 
     public void resetBatch() {
         inExtendedBatch = false;
-        batchQuery = new StringBuilder();
-
-        for (ByteBuf buf: batchBuffers) {
+        batchQuery.setLength(0);
+        for (ByteBuf buf : batchBuffers) {
             if (buf.refCnt() > 0) {
                 buf.release();
             }
         }
-        batchBuffers = new ArrayList<>();
+        batchBuffers.clear();
     }
 }
