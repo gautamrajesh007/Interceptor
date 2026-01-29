@@ -55,7 +55,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
         // Connect to the PostgreSQL db engine
         Bootstrap b= new Bootstrap();
         b.group(ctx.channel().eventLoop())
-                .channel(eventLoopGroupFactory.getServerChannelClass())
+                .channel(eventLoopGroupFactory.getSocketChannelClass())
                 .option(ChannelOption.SO_KEEPALIVE, true)
                 .option(ChannelOption.TCP_NODELAY, true)
                 .handler(new ChannelInitializer<SocketChannel>() {
