@@ -49,6 +49,10 @@ proxy:
   # Allowed keywords that bypass blocking
   allowed-keywords: SELECT,CREATE
 
+  # SSL Configuration
+  ssl:
+    enabled: false
+
 # Admin dashboard
 server:
   port: 3000
