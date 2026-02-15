@@ -4,13 +4,15 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.proxy.HibernateProxy;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 @Entity
 @Table(name = "users")
 @Getter
 @Setter
-@ToString(exclude = "passwordHash")
+@ToString(exclude = {"passwordHash", "oauthConnections"})
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
@@ -24,7 +26,7 @@ public class User {
     @Column(unique = true, nullable = false)
     private String username;
 
-    @Column(nullable = false)
+    // Password can be null for OAuth-only users
     private String passwordHash;
 
     @Enumerated(EnumType.STRING)
@@ -36,11 +38,36 @@ public class User {
 
     private Instant lastLogin;
 
+    // Email for OAuth users
+    private String email;
+
+    // Avatar URL from OAuth
+    private String avatarUrl;
+
+     // Authentication method
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    private AuthMethod authMethod = AuthMethod.PASSWORD;
+
+    // OAuth connections
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<OAuthConnection> oauthConnections = new ArrayList<>();
+
     @PrePersist
     protected void onCreate() {
         if (createdAt == null) {
             createdAt = Instant.now();
         }
+    }
+
+    public boolean canLoginWithPassword() {
+        return passwordHash != null && !passwordHash.isBlank();
+    }
+
+    public boolean hasOAuthConnection(String provider) {
+        return oauthConnections.stream()
+                .anyMatch(c -> c.getProvider().equalsIgnoreCase(provider));
     }
 
     @Override

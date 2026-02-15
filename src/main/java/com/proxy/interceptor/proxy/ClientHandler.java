@@ -8,6 +8,7 @@ import io.netty.channel.*;
 import io.netty.channel.socket.SocketChannel;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -22,8 +23,8 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
     private final BlockedQueryService blockedQueryService;
     private final MetricsService metricsService;
     private final EventLoopGroupFactory eventLoopGroupFactory;
-
     private Channel clientChannel;
+    private ConcurrentHashMap<String, ConnectionState> connections = new ConcurrentHashMap<>();
 
     public ClientHandler(String connId,
                          ConnectionState state,
@@ -33,7 +34,10 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
                          WireProtocolHandler protocolHandler,
                          BlockedQueryService blockedQueryService,
                          MetricsService metricsService,
-                         EventLoopGroupFactory eventLoopGroupFactory) {
+                         EventLoopGroupFactory eventLoopGroupFactory,
+                         Channel clientChannel,
+                         ConcurrentHashMap<String, ConnectionState> connections
+    ) {
         this.connId = connId;
         this.state = state;
         this.targetHost = targetHost;
@@ -43,6 +47,8 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
         this.blockedQueryService = blockedQueryService;
         this.metricsService = metricsService;
         this.eventLoopGroupFactory = eventLoopGroupFactory;
+        this.clientChannel = clientChannel;
+        this.connections = connections;
     }
 
     /*
@@ -55,7 +61,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
         // Connect to the PostgreSQL db engine
         Bootstrap b= new Bootstrap();
         b.group(ctx.channel().eventLoop())
-                .channel(eventLoopGroupFactory.getServerChannelClass())
+                .channel(eventLoopGroupFactory.getSocketChannelClass())
                 .option(ChannelOption.SO_KEEPALIVE, true)
                 .option(ChannelOption.TCP_NODELAY, true)
                 .handler(new ChannelInitializer<SocketChannel>() {
@@ -128,7 +134,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
             metricsService.trackQuery("SIMPLE");
 
             if (sqlClassifier.shouldBlock(sql)) {
-                log.info("{}: BLOCKED Simple Query: {}", connId, truncate(sql));
+                log.info("{}: 🚫BLOCKED Simple Query: {}", connId, truncate(sql));
                 metricsService.trackBlocked();
 
                 blockedQueryService.addBlockedQuery(
@@ -181,7 +187,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
         state.batchBuffers.add(buf.retainedDuplicate());
         String sql = state.batchQuery.toString();
 
-        log.info("{}: BLOCKED Extended Query: {}", connId, truncate(sql));
+        log.info("{}: 🚫BLOCKED Extended Query: {}", connId, truncate(sql));
         metricsService.trackQuery("EXTENDED");
         metricsService.trackBlocked();
 
@@ -245,6 +251,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
         log.info("{}: Client disconnected", connId);
+        connections.remove(connId);
         metricsService.trackDisconnection();
         blockedQueryService.cleanupConnection(connId);
         state.resetBatch();
