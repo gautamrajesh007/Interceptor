@@ -1,6 +1,5 @@
 package com.proxy.interceptor.proxy;
 
-import com.proxy.interceptor.config.SslConfig;
 import com.proxy.interceptor.service.BlockedQueryService;
 import com.proxy.interceptor.service.MetricsService;
 import io.netty.bootstrap.ServerBootstrap;
@@ -8,11 +7,9 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
-import io.netty.handler.ssl.SslContext;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -40,9 +37,6 @@ public class ProxyServer {
     private final BlockedQueryService blockedQueryService;
     private final MetricsService metricsService;
     private final EventLoopGroupFactory eventLoopGroupFactory;
-    private final SslConfig sslConfig;
-    private final SslContext proxySslContext;
-    private final SslContext postgresClientSslContext;
 
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
@@ -55,18 +49,12 @@ public class ProxyServer {
                        WireProtocolHandler protocolHandler,
                        BlockedQueryService blockedQueryService,
                        MetricsService metricsService,
-                       EventLoopGroupFactory eventLoopGroupFactory,
-                       SslConfig sslConfig,
-                       @Qualifier("proxySslContext") SslContext proxySslContext,
-                       @Qualifier("postgresClientSslContext") SslContext postgresClientSslContext) {
+                       EventLoopGroupFactory eventLoopGroupFactory) {
         this.sqlClassifier = sqlClassifier;
         this.protocolHandler = protocolHandler;
         this.blockedQueryService = blockedQueryService;
         this.metricsService = metricsService;
         this.eventLoopGroupFactory = eventLoopGroupFactory;
-        this.sslConfig = sslConfig;
-        this.proxySslContext = proxySslContext;
-        this.postgresClientSslContext = postgresClientSslContext;
     }
 
     @PostConstruct
