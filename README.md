@@ -9,7 +9,7 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue.svg)](https://www.postgresql.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-*Intercept, authorize, and audit PostgreSQL queries in real-time with peer approval workflows*
+_Intercept, authorize, and audit PostgreSQL queries in real-time with peer approval workflows_
 
 </div>
 
@@ -96,29 +96,48 @@
 ### Installation
 
 1. **Clone the repository**
+
    ```bash
    git clone https://github.com/gautamrajesh007/Interceptor.git
    cd Interceptor
    ```
 
 2. **Start infrastructure services**
+
    ```bash
    docker-compose up -d
    ```
+
    This starts:
    - PostgreSQL target database (port 5433)
    - PostgreSQL for Interceptor metadata (port 5434)
    - Redis for pub/sub (port 6379)
 
-3. **Build the application**
+3. **Generate SSL Certificates**
+   Run the helper script to generate self-signed certificates for development:
+
    ```bash
-   ./mvnw clean package -DskipTests
+   chmod +x scripts/cert_gen.sh
+   ./scripts/cert_gen.sh
    ```
 
-4. **Run the proxy**
+   Copy the generated keystores to the resources directory:
+
    ```bash
-   ./mvnw spring-boot:run
+   mkdir -p src/main/resources/ssl
+   cp certs/server.p12 certs/truststore.p12 src/main/resources/ssl/
    ```
+
+4. **Run the application**
+   Load the environment variables and start the application with the `dev` profile:
+
+   ```bash
+   # Load credentials and run
+   source creds.env
+   mvn spring-boot:run -Dspring-boot.run.profiles=dev
+   ```
+
+   _Note: If `mvn` is not installed, ensure `mvnw` works or install Maven._
 
 5. **Access the dashboard**
    ```
@@ -244,10 +263,12 @@ Queries are classified based on keywords:
 ### Approval Workflow
 
 #### For Admin Users
+
 - **Immediate approval/rejection** of any blocked query
 - No peer voting required
 
 #### For Peer Users (when peer approval enabled)
+
 - **Vote** on blocked queries (APPROVE or REJECT)
 - Query executes when `approval.min-votes` approvals reached
 - Query cancelled if any rejection vote cast
@@ -255,6 +276,7 @@ Queries are classified based on keywords:
 ### REST API Examples
 
 #### Login
+
 ```bash
 curl -X POST http://localhost:8080/api/login \
   -H "Content-Type: application/json" \
@@ -262,12 +284,14 @@ curl -X POST http://localhost:8080/api/login \
 ```
 
 #### Get Pending Queries
+
 ```bash
 curl http://localhost:8080/api/pending \
   -H "Authorization: Bearer <token>"
 ```
 
 #### Approve Query
+
 ```bash
 curl -X POST http://localhost:8080/api/approve \
   -H "Authorization: Bearer <token>" \
@@ -276,6 +300,7 @@ curl -X POST http://localhost:8080/api/approve \
 ```
 
 #### Vote on Query (Peer Mode)
+
 ```bash
 curl -X POST http://localhost:8080/api/vote \
   -H "Authorization: Bearer <token>" \
@@ -288,22 +313,27 @@ curl -X POST http://localhost:8080/api/vote \
 ## 🔐 Security Features
 
 ### SSL/TLS Support
+
 - Client-to-proxy encryption
 - Proxy-to-database encryption
 - Optional client certificate authentication
 
 ### Authentication
+
 - **Local Authentication**: Username/password with BCrypt hashing
 - **OAuth2**: GitHub, Google, and other providers supported
 - **JWT Tokens**: Stateless session management
 
 ### Replay Attack Protection
+
 - Nonce-based request validation
 - Timestamp verification
 - Request hash tracking in audit log
 
 ### Audit Trail
+
 Every action is logged:
+
 - Query interceptions
 - Approval/rejection decisions
 - User logins and logouts
@@ -329,6 +359,7 @@ Every action is logged:
 ## 📊 Monitoring & Observability
 
 ### Spring Boot Actuator Endpoints
+
 ```bash
 # Health check
 curl http://localhost:8080/actuator/health
@@ -341,6 +372,7 @@ curl http://localhost:8080/actuator/info
 ```
 
 ### Metrics Tracked
+
 - Total queries processed
 - Blocked queries count
 - Approval/rejection rates
@@ -352,17 +384,20 @@ curl http://localhost:8080/actuator/info
 ## 🧪 Development
 
 ### Running Tests
+
 ```bash
 ./mvnw test
 ```
 
 ### Building for Production
+
 ```bash
 ./mvnw clean package -DskipTests
 java -jar target/interceptor-0.0.1-SNAPSHOT.jar
 ```
 
 ### Hot Reload (Development)
+
 Spring Boot DevTools is included for automatic restart during development.
 
 ---
