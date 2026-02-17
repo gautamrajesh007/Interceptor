@@ -1,5 +1,6 @@
 package com.proxy.interceptor.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.proxy.HibernateProxy;
@@ -25,6 +26,7 @@ public class QueryApproval {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "blocked_query_id", nullable = false)
     @ToString.Exclude
+    @JsonIgnore
     private BlockedQuery blockedQuery;
 
     @Column(nullable = false)
