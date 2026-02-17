@@ -120,7 +120,10 @@ public class QueryController {
             }
         }
 
-        var result = blockedQueryService.addVote(request.id(), username, request.vote());
+        Map<String, Object> result = blockedQueryService.addVote(request.id(), username, request.vote());
+
+        // Check for duplicates and return 403 error if detected
+        if (Boolean.TRUE.equals(result.get("duplicate"))) return ResponseEntity.status(403).body(result);
 
         auditService.log(username, "query_vote",
             String.format("Vote %s on query #%d", request.vote(), request.id()), clientIp);
