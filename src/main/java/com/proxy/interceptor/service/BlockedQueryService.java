@@ -271,7 +271,7 @@ public class BlockedQueryService {
                 "approvals", new ArrayList<>(pending.approvals()),
                 "rejections", new ArrayList<>(pending.rejections()),
                 "approvalCount", pending.approvals().size(),
-                "rejectionCount", minVotes
+                "rejectionCount", pending.rejections().size()
         );
     }
 
