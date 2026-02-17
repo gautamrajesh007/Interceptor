@@ -50,7 +50,7 @@ public class UserController {
             user.setPasswordHash(null);
             return ResponseEntity.ok(user);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("error", "Role does not exist"));
         }
     }
 
