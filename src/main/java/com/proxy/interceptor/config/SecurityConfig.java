@@ -37,7 +37,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                     // Public endpoints
                     .requestMatchers("/api/login", "/api/logout").permitAll()
-                    .requestMatchers("/", "/index.html", "/css/**", "/js/**", "/favicon.ico").permitAll()
+                    .requestMatchers("/swagger-ui/*", "/v3/*", "/error").permitAll()
                     .requestMatchers("/actuator/health").permitAll()
 
                     // Admin-only endpoints
@@ -46,7 +46,7 @@ public class SecurityConfig {
 
                     // Protected endpoints (both ADMIN and PEER)
                     .requestMatchers("/api/blocked/**", "/api/approve", "/api/reject",
-                            "/api/vote", "/events", "/error")
+                            "/api/vote")
                         .hasAnyRole("ADMIN", "PEER")
 
                     .anyRequest().authenticated()
