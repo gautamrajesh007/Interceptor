@@ -6,7 +6,7 @@ target/
 docs/
 .postman/
 postman/
-src/main/resources/creds.env
+creds.env
 src/main/resources/application-prod.yaml
 certs/
 src/main/resources/ssl/
