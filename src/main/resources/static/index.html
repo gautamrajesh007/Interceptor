@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Interceptor · Dashboard</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect rx='8' width='32' height='32' fill='%23723FEB'/><path d='M16 6l8 5v10l-8 5-8-5V11z' fill='none' stroke='white' stroke-width='2'/><circle cx='16' cy='16' r='3' fill='white'/></svg>"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/css/dashboard.css" />
+  </head>
+  <body>
+    <!-- ═══════════════ LOGIN OVERLAY ═══════════════ -->
+    <div id="login-overlay" class="login-overlay">
+      <div class="login-bg-shapes">
+        <div class="login-shape shape-1"></div>
+        <div class="login-shape shape-2"></div>
+        <div class="login-shape shape-3"></div>
+      </div>
+      <div class="login-card">
+        <div class="login-header">
+          <div class="login-logo">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+              <rect rx="14" width="48" height="48" fill="#723FEB" />
+              <path
+                d="M24 10l12 7.5v15L24 40 12 32.5v-15z"
+                fill="none"
+                stroke="white"
+                stroke-width="2.5"
+                stroke-linejoin="round"
+              />
+              <circle cx="24" cy="24" r="4.5" fill="white" opacity="0.9" />
+              <path
+                d="M24 14v6M24 28v6M18 17.5l4 3.5M26 27l4 3.5M30 17.5l-4 3.5M22 27l-4 3.5"
+                stroke="white"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                opacity="0.5"
+              />
+            </svg>
+          </div>
+          <h1>Interceptor</h1>
+          <p>PostgreSQL Authorization Proxy</p>
+        </div>
+        <form id="login-form" autocomplete="off">
+          <div class="input-group">
+            <label for="login-username">Username</label>
+            <input
+              type="text"
+              id="login-username"
+              placeholder="Enter your username"
+              required
+            />
+          </div>
+          <div class="input-group">
+            <label for="login-password">Password</label>
+            <input
+              type="password"
+              id="login-password"
+              placeholder="Enter your password"
+              required
+            />
+          </div>
+          <button
+            type="submit"
+            class="btn btn-primary btn-block"
+            id="login-btn"
+          >
+            <span class="btn-text">Sign In</span>
+            <span class="btn-loader hidden">
+              <span class="spinner"></span>
+            </span>
+          </button>
+          <p id="login-error" class="error-text"></p>
+        </form>
+      </div>
+    </div>
+
+    <!-- ═══════════════ MAIN APPLICATION ═══════════════ -->
+    <div id="app" class="app-container hidden">
+      <!-- ─── Left Sidebar ─── -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <div class="logo">
+            <div class="logo-icon">
+              <svg width="36" height="36" viewBox="0 0 48 48" fill="none">
+                <rect rx="14" width="48" height="48" fill="#723FEB" />
+                <path
+                  d="M24 10l12 7.5v15L24 40 12 32.5v-15z"
+                  fill="none"
+                  stroke="white"
+                  stroke-width="2.5"
+                  stroke-linejoin="round"
+                />
+                <circle cx="24" cy="24" r="4.5" fill="white" opacity="0.9" />
+              </svg>
+            </div>
+            <span class="logo-text">Interceptor</span>
+          </div>
+        </div>
+
+        <nav class="sidebar-nav">
+          <div class="nav-section-label">Main</div>
+          <a href="#" class="nav-item active" data-page="dashboard">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="3" y="3" width="7" height="7" rx="2" />
+              <rect x="14" y="3" width="7" height="7" rx="2" />
+              <rect x="3" y="14" width="7" height="7" rx="2" />
+              <rect x="14" y="14" width="7" height="7" rx="2" />
+            </svg>
+            <span>Dashboard</span>
+          </a>
+          <a href="#" class="nav-item" data-page="queries">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <ellipse cx="12" cy="5" rx="9" ry="3" />
+              <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+              <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+            </svg>
+            <span>Queries</span>
+          </a>
+
+          <div class="nav-section-label admin-only">Administration</div>
+          <a href="#" class="nav-item admin-only" data-page="users">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+            <span>Users</span>
+          </a>
+          <a href="#" class="nav-item admin-only" data-page="audit">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+            <span>Audit Logs</span>
+          </a>
+          <a href="#" class="nav-item admin-only" data-page="settings">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+              />
+            </svg>
+            <span>Settings</span>
+          </a>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="sidebar-glass-accent"></div>
+          <div class="user-info">
+            <div class="avatar" id="user-avatar">A</div>
+            <div class="user-details">
+              <span class="username" id="sidebar-username">Admin</span>
+              <span class="role-badge" id="sidebar-role">ADMIN</span>
+            </div>
+          </div>
+          <button class="logout-btn" id="logout-btn" title="Logout">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+          </button>
+        </div>
+      </aside>
+
+      <!-- ─── Main Content ─── -->
+      <main class="main-content" id="main-content">
+        <!-- ══ Dashboard Page ══ -->
+        <section class="page active" id="page-dashboard">
+          <div class="page-header">
+            <div>
+              <h1 class="page-title">Dashboard</h1>
+              <p class="page-subtitle">
+                Monitor and manage your database proxy
+              </p>
+            </div>
+            <div class="header-actions">
+              <button
+                class="btn btn-ghost"
+                id="refresh-dashboard"
+                title="Refresh"
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <polyline points="23 4 23 10 17 10" />
+                  <polyline points="1 20 1 14 7 14" />
+                  <path
+                    d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Stats Bento Grid -->
+          <div class="bento-grid stats-grid">
+            <div class="stat-card stat-purple" data-stat="totalQueries">
+              <div class="stat-icon">
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                </svg>
+              </div>
+              <div class="stat-value" id="stat-total">—</div>
+              <div class="stat-label">Total Queries</div>
+              <div class="stat-bar">
+                <div class="stat-bar-fill" style="width: 100%"></div>
+              </div>
+            </div>
+            <div class="stat-card stat-coral" data-stat="blockedQueries">
+              <div class="stat-icon">
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                </svg>
+              </div>
+              <div class="stat-value" id="stat-blocked">—</div>
+              <div class="stat-label">Blocked Queries</div>
+              <div class="stat-bar">
+                <div class="stat-bar-fill" style="width: 0%"></div>
+              </div>
+            </div>
+            <div class="stat-card stat-teal" data-stat="approvedQueries">
+              <div class="stat-icon">
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+              </div>
+              <div class="stat-value" id="stat-approved">—</div>
+              <div class="stat-label">Approved</div>
+              <div class="stat-bar">
+                <div class="stat-bar-fill" style="width: 0%"></div>
+              </div>
+            </div>
+            <div
+              class="stat-card stat-purple-light"
+              data-stat="activeConnections"
+            >
+              <div class="stat-icon">
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M5 12.55a11 11 0 0 1 14.08 0" />
+                  <path d="M1.42 9a16 16 0 0 1 21.16 0" />
+                  <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+                  <circle cx="12" cy="20" r="1" />
+                </svg>
+              </div>
+              <div class="stat-value" id="stat-connections">—</div>
+              <div class="stat-label">Active Connections</div>
+              <div class="stat-bar">
+                <div class="stat-bar-fill" style="width: 0%"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Secondary Stats Row -->
+          <div class="bento-grid secondary-grid">
+            <div class="card card-rejected">
+              <div class="card-header">
+                <h3>Rejected</h3>
+                <span class="badge badge-danger" id="stat-rejected">0</span>
+              </div>
+              <p class="card-description">Queries denied by reviewers</p>
+            </div>
+            <div class="card card-errors">
+              <div class="card-header">
+                <h3>Errors</h3>
+                <span class="badge badge-warning" id="stat-errors">0</span>
+              </div>
+              <p class="card-description">Processing errors encountered</p>
+            </div>
+            <div class="card card-uptime">
+              <div class="card-header">
+                <h3>Proxy Status</h3>
+                <span
+                  class="status-dot status-online"
+                  id="proxy-status-dot"
+                ></span>
+              </div>
+              <p class="card-description" id="proxy-status-text">Online</p>
+            </div>
+          </div>
+
+          <!-- Pending Queries (Tasks for Today) -->
+          <div class="card pending-card">
+            <div class="card-header">
+              <h3>
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+                Queries Awaiting Action
+              </h3>
+              <span class="badge badge-purple" id="pending-count">0</span>
+            </div>
+            <div class="pending-list" id="pending-list">
+              <div class="empty-state" id="pending-empty">
+                <svg
+                  width="64"
+                  height="64"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#E0E0E0"
+                  stroke-width="1"
+                >
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+                <p>All clear! No queries pending approval.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ══ Queries Page ══ -->
+        <section class="page" id="page-queries">
+          <div class="page-header">
+            <div>
+              <h1 class="page-title">Query History</h1>
+              <p class="page-subtitle">
+                View and manage all intercepted queries
+              </p>
+            </div>
+            <div class="header-actions">
+              <div class="filter-tabs" id="query-filters">
+                <button class="filter-tab active" data-filter="all">All</button>
+                <button class="filter-tab" data-filter="PENDING">
+                  Pending
+                </button>
+                <button class="filter-tab" data-filter="APPROVED">
+                  Approved
+                </button>
+                <button class="filter-tab" data-filter="REJECTED">
+                  Rejected
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="table-container">
+              <table class="data-table" id="queries-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Query</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="queries-tbody">
+                  <tr class="empty-row">
+                    <td colspan="6">
+                      <div class="table-empty">Loading queries...</div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ══ Users Page ══ -->
+        <section class="page" id="page-users">
+          <div class="page-header">
+            <div>
+              <h1 class="page-title">User Management</h1>
+              <p class="page-subtitle">Manage platform users and roles</p>
+            </div>
+            <div class="header-actions">
+              <button class="btn btn-primary" id="btn-create-user">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Add User
+              </button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="table-container">
+              <table class="data-table" id="users-table">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Role</th>
+                    <th>Created</th>
+                    <th>Last Login</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="users-tbody">
+                  <tr class="empty-row">
+                    <td colspan="5">
+                      <div class="table-empty">Loading users...</div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ══ Audit Page ══ -->
+        <section class="page" id="page-audit">
+          <div class="page-header">
+            <div>
+              <h1 class="page-title">Audit Logs</h1>
+              <p class="page-subtitle">Security and activity trail</p>
+            </div>
+            <div class="header-actions">
+              <div class="search-box">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  type="text"
+                  id="audit-search"
+                  placeholder="Filter by username..."
+                />
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="table-container">
+              <table class="data-table" id="audit-table">
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>User</th>
+                    <th>Action</th>
+                    <th>Details</th>
+                    <th>IP Address</th>
+                  </tr>
+                </thead>
+                <tbody id="audit-tbody">
+                  <tr class="empty-row">
+                    <td colspan="5">
+                      <div class="table-empty">Loading audit logs...</div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ══ Settings Page ══ -->
+        <section class="page" id="page-settings">
+          <div class="page-header">
+            <div>
+              <h1 class="page-title">Configuration</h1>
+              <p class="page-subtitle">
+                Proxy settings and system configuration
+              </p>
+            </div>
+          </div>
+          <div class="settings-grid">
+            <div class="card settings-card">
+              <div class="card-header">
+                <h3>Proxy Settings</h3>
+              </div>
+              <div class="settings-body" id="settings-proxy">
+                <div class="setting-row">
+                  <label>Proxy Port</label>
+                  <span class="setting-value" id="cfg-proxy-port">—</span>
+                </div>
+                <div class="setting-row">
+                  <label>Target Host</label>
+                  <span class="setting-value" id="cfg-target-host">—</span>
+                </div>
+                <div class="setting-row">
+                  <label>Target Port</label>
+                  <span class="setting-value" id="cfg-target-port">—</span>
+                </div>
+              </div>
+            </div>
+            <div class="card settings-card">
+              <div class="card-header">
+                <h3>Security Policy</h3>
+              </div>
+              <div class="settings-body" id="settings-security">
+                <div class="setting-row">
+                  <label>Block by Default</label>
+                  <span class="setting-value badge" id="cfg-block-default"
+                    >—</span
+                  >
+                </div>
+                <div class="setting-row">
+                  <label>Peer Approval</label>
+                  <span class="setting-value badge" id="cfg-peer-approval"
+                    >—</span
+                  >
+                </div>
+                <div class="setting-row">
+                  <label>Min Votes Required</label>
+                  <span class="setting-value" id="cfg-min-votes">—</span>
+                </div>
+              </div>
+            </div>
+            <div class="card settings-card settings-card-wide">
+              <div class="card-header">
+                <h3>Query Keywords</h3>
+              </div>
+              <div class="settings-body">
+                <div class="setting-row">
+                  <label>Critical Keywords</label>
+                  <div class="keyword-tags" id="cfg-critical-keywords"></div>
+                </div>
+                <div class="setting-row">
+                  <label>Allowed Keywords</label>
+                  <div class="keyword-tags" id="cfg-allowed-keywords"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <!-- ─── Right Sidebar - Timeline ─── -->
+      <aside class="timeline-sidebar" id="timeline-sidebar">
+        <div class="timeline-header">
+          <h3>Live Activity</h3>
+          <div class="live-indicator" id="ws-indicator">
+            <span class="live-dot"></span>
+            <span class="live-text">Connecting</span>
+          </div>
+        </div>
+        <div class="timeline-list" id="timeline-list">
+          <div class="timeline-empty" id="timeline-empty">
+            <svg
+              width="40"
+              height="40"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#D0D0D0"
+              stroke-width="1.5"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+            <p>Waiting for events...</p>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- ═══════════════ MODAL ═══════════════ -->
+    <div id="modal-overlay" class="modal-overlay hidden">
+      <div class="modal-card" id="modal-card">
+        <div class="modal-header">
+          <h3 id="modal-title">Modal</h3>
+          <button class="modal-close" id="modal-close">&times;</button>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- ═══════════════ TOAST CONTAINER ═══════════════ -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- ═══════════════ SCRIPTS ═══════════════ -->
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/dashboard.js"></script>
+  </body>
+</html>
