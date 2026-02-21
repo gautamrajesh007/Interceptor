@@ -1,5 +1,7 @@
 package com.proxy.interceptor.security;
 
+import com.proxy.interceptor.model.User;
+import com.proxy.interceptor.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,6 +17,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 
 @Component
 @RequiredArgsConstructor
@@ -22,6 +25,7 @@ import java.util.List;
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final UserRepository userRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -37,26 +41,36 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             if (jwtTokenProvider.validateToken(token)) {
                 String username = jwtTokenProvider.getUsernameFromToken(token);
                 String role = jwtTokenProvider.getRoleFromToken(token);
+                Integer tokenVersion = jwtTokenProvider.getTokenVersionFromToken(token);
 
-                log.info("Authenticated user: {}, role: {}", username, role);
+                Optional<User> userOpt = userRepository.findByUsername(username);
 
-                // Set username as request attribute for use in controllers
-                request.setAttribute("username", username);
-                request.setAttribute("role", role);
+                if (userOpt.isPresent()) {
+                    Integer dbVersion = userOpt.get().getTokenVersion() != null ? userOpt.get().getTokenVersion() : 0;
+                    Integer jwtVersion = tokenVersion != null ? tokenVersion : 0;
 
-                var auth = new UsernamePasswordAuthenticationToken(
-                        username,
-                        null,
-                        List.of(new SimpleGrantedAuthority("ROLE_" + role))
-                );
-                SecurityContextHolder.getContext().setAuthentication(auth);
+                    if (dbVersion.equals(jwtVersion)) {
+                        // Set username as request attribute for use in controllers
+                        request.setAttribute("username", username);
+                        request.setAttribute("role", role);
+
+                        var auth = new UsernamePasswordAuthenticationToken(
+                                username,
+                                null,
+                                List.of(new SimpleGrantedAuthority("ROLE_" + role))
+                        );
+                        SecurityContextHolder.getContext().setAuthentication(auth);
+                        log.info("Authenticated user: {}, role: {}, token version: {}", username, role, tokenVersion);
+                    } else {
+                        log.warn("Token version mismatch for user {}. Token invalidated by logout.", username);
+                    }
+                }
             } else {
                 log.warn("Invalid JWT token");
             }
         } else {
-            log.debug("No Authorization header found");
+            log.warn("Invalid Authorization header format");
         }
-
         filterChain.doFilter(request, response);
     }
 }
