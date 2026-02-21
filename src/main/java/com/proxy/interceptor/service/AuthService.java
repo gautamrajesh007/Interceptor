@@ -1,6 +1,7 @@
 package com.proxy.interceptor.service;
 
 import com.proxy.interceptor.dto.LoginResult;
+import com.proxy.interceptor.dto.LogoutResult;
 import com.proxy.interceptor.model.Role;
 import com.proxy.interceptor.model.User;
 import com.proxy.interceptor.repository.UserRepository;
@@ -19,6 +20,7 @@ import java.util.Optional;
 public class AuthService {
 
     private final UserRepository userRepository;
+    private final AuditService auditService;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
 
@@ -46,6 +48,22 @@ public class AuthService {
         log.info("User {} logged in successfully", username);
 
         return new LoginResult(true, token, user, null);
+    }
+
+    public LogoutResult logout(String username, String ipAddress) {
+        Optional<User> userOpt = userRepository.findByUsername(username);
+
+        if (userOpt.isEmpty()) {
+            log.warn("Logout attempted for non-existent user: {}", username);
+            return new LogoutResult(false, "User not found");
+        }
+
+        User user = userOpt.get();
+        int newVersion = (user.getTokenVersion() != null ? user.getTokenVersion() : 0) + 1;
+        user.setTokenVersion(newVersion);
+        userRepository.save(user);
+        log.info("User {} logged out, token version incremented to {}", username, newVersion);
+        return new LogoutResult(true, "Logout successful");
     }
 
     public User createUser(String username, String password, Role role) {
