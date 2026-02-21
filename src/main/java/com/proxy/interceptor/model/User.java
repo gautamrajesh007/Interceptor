@@ -32,6 +32,10 @@ public class User {
     private Role role;
 
     @Column(nullable = false)
+    @Builder.Default
+    private Integer tokenVersion = 0;
+
+    @Column(nullable = false)
     private Instant createdAt;
 
     private Instant lastLogin;
