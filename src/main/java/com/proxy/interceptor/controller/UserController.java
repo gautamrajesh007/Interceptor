@@ -79,7 +79,7 @@ public class UserController {
                 "Deleted user: " + user.getUsername(),
                 getClientIp(httpRequest));
 
-        return ResponseEntity.ok(Map.of("ok", true));
+        return ResponseEntity.ok(Map.of("success", true));
     }
 
     private String getClientIp(HttpServletRequest request) {
