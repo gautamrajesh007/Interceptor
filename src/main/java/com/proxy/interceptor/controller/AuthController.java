@@ -37,6 +37,8 @@ public class AuthController {
             ));
         }
 
+        auditService.log(request.username(), "login", "Unauthorized access",
+                    getClientIp(httpServletRequest));
         return ResponseEntity.status(401).body(Map.of("error", result.error()));
     }
 
