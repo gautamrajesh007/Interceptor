@@ -33,12 +33,7 @@ public class AuthController {
                     getClientIp(httpServletRequest));
 
             return ResponseEntity.ok(Map.of(
-                    "token", result.token(),
-                    "user", Map.of(
-                            "id", result.user().getId(),
-                            "username", result.user().getUsername(),
-                            "role", result.user().getRole().name()
-                    )
+                    "token", result.token()
             ));
         }
 
