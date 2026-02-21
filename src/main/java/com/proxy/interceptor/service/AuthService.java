@@ -41,7 +41,8 @@ public class AuthService {
         user.setLastLogin(Instant.now());
         userRepository.save(user);
 
-        String token = jwtTokenProvider.generateToken(username, user.getRole().name());
+        Integer currentVersion = user.getTokenVersion() != null ? user.getTokenVersion() : 0;
+        String token = jwtTokenProvider.generateToken(username, user.getRole().name(), currentVersion);
         log.info("User {} logged in successfully", username);
 
         return new LoginResult(true, token, user, null);
