@@ -50,7 +50,7 @@ public class AuthService {
         return new LoginResult(true, token, user, null);
     }
 
-    public LogoutResult logout(String username, String ipAddress) {
+    public LogoutResult logout(String username) {
         Optional<User> userOpt = userRepository.findByUsername(username);
 
         if (userOpt.isEmpty()) {
