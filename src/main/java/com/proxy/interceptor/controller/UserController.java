@@ -62,7 +62,7 @@ public class UserController {
     ) {
         var userOpt = userRepository.findById(id);
         if (userOpt.isEmpty()) {
-            return ResponseEntity.notFound().build();
+            return ResponseEntity.status(404).body(Map.of("error", "User does not exist"));
         }
 
         User user = userOpt.get();
