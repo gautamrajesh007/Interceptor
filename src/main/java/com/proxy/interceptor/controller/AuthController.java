@@ -2,16 +2,15 @@ package com.proxy.interceptor.controller;
 
 import com.proxy.interceptor.dto.LoginRequest;
 import com.proxy.interceptor.dto.LoginResult;
+import com.proxy.interceptor.dto.LogoutResult;
+import com.proxy.interceptor.security.JwtTokenProvider;
 import com.proxy.interceptor.service.AuditService;
 import com.proxy.interceptor.service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
@@ -22,6 +21,7 @@ public class AuthController {
 
     private final AuthService authService;
     private final AuditService auditService;
+    private final JwtTokenProvider jwtTokenProvider;
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request,
@@ -43,14 +43,31 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<?> logout(HttpServletRequest request) {
-        // JWT is stateless, so logout is handled client-side
-        // Audit logout
-        String username = (String) request.getAttribute("username");
-        if (username != null) {
-            auditService.log(username, "logout", "User logged out", getClientIp(request));
+    public ResponseEntity<?> logout(
+            @RequestHeader(value = "Authorization", required = true) String authHeader,
+            HttpServletRequest request
+    ) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Missing or invalid token"));
         }
-        return ResponseEntity.ok(Map.of("ok", true));
+
+        String token = authHeader.substring(7);
+
+        try {
+            String username = jwtTokenProvider.getUsernameFromToken(token);
+
+            LogoutResult result = authService.logout(username);
+
+            if (result.success()) {
+                auditService.log(username, "logout", "User logged out", getClientIp(request));
+                return ResponseEntity.ok(Map.of("success", true, "message", result.message()));
+            } else {
+                auditService.log(username, "logout", "Error logging out", getClientIp(request));
+                return ResponseEntity.badRequest().body(Map.of("error", "Error logging out"));
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(Map.of("error", "Invalid or expired token"));
+        }
     }
 
     private String getClientIp(HttpServletRequest request) {
