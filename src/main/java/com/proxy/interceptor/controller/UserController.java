@@ -48,10 +48,12 @@ public class UserController {
                     "Created user: " + request.username() + " with role: " + role,
                     getClientIp(httpRequest));
 
-            user.setPasswordHash(null);
-            return ResponseEntity.ok(user);
+            return ResponseEntity.ok(userService.mapToResponse(user));
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Role does not exist"));
+            if ("Username already exists".equals(e.getMessage())) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Try a different username"));
+            }
+            return ResponseEntity.badRequest().body(Map.of("error", "Invalid role"));
         }
     }
 
