@@ -2,6 +2,7 @@ package com.proxy.interceptor.config;
 
 import java.util.List;
 
+import com.proxy.interceptor.repository.UserRepository;
 import org.jspecify.annotations.NonNull;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.Message;
@@ -30,6 +31,7 @@ import lombok.extern.slf4j.Slf4j;
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final UserRepository userRepository;
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
@@ -60,18 +62,27 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                         if (jwtTokenProvider.validateToken(token)) {
                             String username = jwtTokenProvider.getUsernameFromToken(token);
                             String role = jwtTokenProvider.getRoleFromToken(token);
+                            Integer tokenVersion = jwtTokenProvider.getTokenVersionFromToken(token);
 
-                            var auth = new UsernamePasswordAuthenticationToken(
-                                    username,
-                                    null,
-                                    List.of(new SimpleGrantedAuthority("ROLE_" + role))
-                            );
-                            accessor.setUser(auth);
-                            log.debug("WebSocket authenticated: {}", username);
+                            userRepository.findByUsername(username).ifPresent(user -> {
+                                Integer dbVersion = user.getTokenVersion() != null ? user.getTokenVersion() : 0;
+                                Integer jwtVersion = tokenVersion != null ? tokenVersion : 0;
+
+                                if (dbVersion.equals(jwtVersion)) {
+                                    var auth = new UsernamePasswordAuthenticationToken(
+                                            username,
+                                            null,
+                                            List.of(new SimpleGrantedAuthority("ROLE_" + role))
+                                    );
+                                    accessor.setUser(auth);
+                                    log.debug("WebSocket authenticated: {}", username);
+                                } else {
+                                    log.warn("WebSocket Auth blocked: Token version mismatch for {}", username);
+                                }
+                            });
                         }
                     }
                 }
-
                 return message;
             }
         });
