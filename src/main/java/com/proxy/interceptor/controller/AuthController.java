@@ -47,6 +47,7 @@ public class AuthController {
             @RequestHeader(value = "Authorization") String authHeader,
             HttpServletRequest request
     ) {
+        // Check if Authorization header exists and Bearer is present
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             return ResponseEntity.badRequest().body(Map.of("error", "Missing or invalid token"));
         }
@@ -54,9 +55,16 @@ public class AuthController {
         String token = authHeader.substring(7);
 
         try {
-            String username = jwtTokenProvider.getUsernameFromToken(token);
+            // Validate token structure/expiration
+            if (!jwtTokenProvider.validateToken(token)) {
+                return ResponseEntity.status(401).body(Map.of("error", "Invalid or expired token"));
+            }
 
-            LogoutResult result = authService.logout(username);
+            String username = jwtTokenProvider.getUsernameFromToken(token);
+            Integer jwtVersion = jwtTokenProvider.getTokenVersionFromToken(token);
+            if (jwtVersion == null) jwtVersion = 0;
+
+            LogoutResult result = authService.logout(username, jwtVersion);
 
             if (result.success()) {
                 auditService.log(username, "logout", "User logged out", getClientIp(request));
@@ -66,7 +74,7 @@ public class AuthController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Error logging out"));
             }
         } catch (Exception e) {
-            return ResponseEntity.status(401).body(Map.of("error", "Invalid or expired token"));
+            return ResponseEntity.status(500).body(Map.of("error", "Internal server error"));
         }
     }
 
