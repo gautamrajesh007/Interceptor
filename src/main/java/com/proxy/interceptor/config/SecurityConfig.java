@@ -31,7 +31,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http) {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(AbstractHttpConfigurer::disable)
@@ -45,7 +45,7 @@ public class SecurityConfig {
                 // WebSocket (auth handled at STOMP level)
                 .requestMatchers("/ws/**").permitAll()
                 // Public endpoints
-                .requestMatchers("/api/login", "/api/logout").permitAll()
+                .requestMatchers("/api/login").permitAll()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 // Admin-only endpoints
