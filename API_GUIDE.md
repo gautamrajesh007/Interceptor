@@ -238,7 +238,7 @@ View security and activity logs for compliance.
 
 The API supports real-time updates using **STOMP over WebSocket** (with SockJS support). This is critical for the live dashboard.
 
-**Connection URL**: `http://<host>:8080/ws`
+**Connection URL**: `https://<host>:3000/ws`
 **Protocol**: STOMP v1.1/1.2
 
 ### Connection & Authentication
@@ -340,7 +340,7 @@ postgres=# UPDATE users SET role = 'admin' WHERE id = 1;
 1.  **Check API**: Use `curl` or Postman to see the blocked query.
 
     ```bash
-    curl -H "Authorization: Bearer <your_token>" http://localhost:8080/api/blocked
+    curl -H "Authorization: Bearer <your_token>" https://localhost:3000/api/blocked
     ```
 
     You should see an entry with `status: "PENDING"`.
@@ -348,7 +348,7 @@ postgres=# UPDATE users SET role = 'admin' WHERE id = 1;
 2.  **Approve**: Send an approval request.
 
     ```bash
-    curl -X POST http://localhost:8080/api/approve \
+    curl -X POST https://localhost:3000/api/approve \
          -H "Authorization: Bearer <your_token>" \
          -H "Content-Type: application/json" \
          -d '{"id": <QUERY_ID>}'

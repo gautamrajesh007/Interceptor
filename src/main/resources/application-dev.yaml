@@ -4,9 +4,9 @@ spring:
   main:
     banner-mode: off
 
-  # Interceptor's own database (for users, audit, blocked queries)
+  # Interceptor's own database (for users, audit, blocked queries) — SSL enabled
   datasource:
-    url: "jdbc:postgresql://localhost:5434/interceptor"
+    url: "jdbc:postgresql://localhost:5434/interceptor?ssl=true&sslmode=verify-ca&sslrootcert=./certs/ca.crt&sslcert=./certs/client.crt&sslkey=./certs/client.pk8"
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
@@ -20,11 +20,14 @@ spring:
 #        format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
-  # Redis configuration
+  # Redis configuration — TLS on port 6380
   data:
     redis:
       host: localhost
-      port: 6379
+      port: 6380
+      ssl:
+        enabled: true
+
   # Spring security login credentials
   security:
     user:
@@ -49,13 +52,23 @@ proxy:
   # Allowed keywords that bypass blocking
   allowed-keywords: SELECT,CREATE
 
-  # SSL Configuration
+  # SSL Configuration — TLSv1.3 with ECDSA certs
   ssl:
-    enabled: false
+    enabled: true
+    trust-store: classpath:ssl/truststore.p12
+    trust-store-password: changeit
 
-# Admin dashboard
+# Admin dashboard — HTTPS with TLSv1.3
 server:
   port: 3000
+  ssl:
+    enabled: true
+    key-store: classpath:ssl/server.p12
+    key-store-password: changeit
+    key-store-type: PKCS12
+    protocol: TLSv1.3
+    enabled-protocols: TLSv1.3
+    ciphers: TLS_AES_256_GCM_SHA384
 
 # JWT configuration
 jwt:
