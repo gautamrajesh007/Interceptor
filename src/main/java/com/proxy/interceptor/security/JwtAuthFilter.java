@@ -69,7 +69,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 log.warn("Invalid JWT token");
             }
         } else {
-            log.warn("Invalid Authorization header format");
+            log.warn("No Authorization header present");
         }
         filterChain.doFilter(request, response);
     }
