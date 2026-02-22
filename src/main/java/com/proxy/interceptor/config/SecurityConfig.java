@@ -45,7 +45,7 @@ public class SecurityConfig {
                 // WebSocket (auth handled at STOMP level)
                 .requestMatchers("/ws/**").permitAll()
                 // Public endpoints
-                .requestMatchers("/api/login").permitAll()
+                .requestMatchers("/api/login", "/api/logout").permitAll()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 // Admin-only endpoints
