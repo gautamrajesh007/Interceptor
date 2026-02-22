@@ -89,6 +89,6 @@ public class UserController {
         if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
             return xForwardedFor.split(",")[0].trim();
         }
-        return request.getRemoteUser();
+        return request.getRemoteAddr();
     }
 }
