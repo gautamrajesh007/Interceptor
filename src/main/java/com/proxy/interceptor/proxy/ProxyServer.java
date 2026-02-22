@@ -1,5 +1,6 @@
 package com.proxy.interceptor.proxy;
 
+import com.proxy.interceptor.config.SslContextFactory;
 import com.proxy.interceptor.service.BlockedQueryService;
 import com.proxy.interceptor.service.MetricsService;
 import io.netty.bootstrap.ServerBootstrap;
@@ -10,7 +11,9 @@ import io.netty.channel.socket.SocketChannel;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,6 +40,7 @@ public class ProxyServer {
     private final BlockedQueryService blockedQueryService;
     private final MetricsService metricsService;
     private final EventLoopGroupFactory eventLoopGroupFactory;
+    private final SslContextFactory sslContextFactory;
 
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
@@ -49,12 +53,14 @@ public class ProxyServer {
                        WireProtocolHandler protocolHandler,
                        BlockedQueryService blockedQueryService,
                        MetricsService metricsService,
-                       EventLoopGroupFactory eventLoopGroupFactory) {
+                       EventLoopGroupFactory eventLoopGroupFactory,
+                       @Autowired(required = false) @Nullable SslContextFactory sslContextFactory) {
         this.sqlClassifier = sqlClassifier;
         this.protocolHandler = protocolHandler;
         this.blockedQueryService = blockedQueryService;
         this.metricsService = metricsService;
         this.eventLoopGroupFactory = eventLoopGroupFactory;
+        this.sslContextFactory = sslContextFactory;
     }
 
     @PostConstruct
@@ -86,7 +92,8 @@ public class ProxyServer {
                                         metricsService,
                                         eventLoopGroupFactory,
                                         ch,
-                                        connections
+                                        connections,
+                                        sslContextFactory
                                 )
                         );
                     }

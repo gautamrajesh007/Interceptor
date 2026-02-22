@@ -1,30 +1,32 @@
-#!/bin/zsh
+#!/bin/bash
 
 # Create certificates directory
 CERT_DIR="./certs"
-mkdir -p $CERT_DIR
+mkdir -p "$CERT_DIR"
 
-echo "🔐 Generating SSL certificates for development..."
+echo "🔐 Generating ECDSA (P-256) SSL certificates for development..."
 
-# Generate CA (Certificate Authority)
-echo "1. Generating CA..."
-openssl genrsa -out $CERT_DIR/ca.key 4096
-openssl req -new -x509 -days 3650 -key $CERT_DIR/ca.key -out $CERT_DIR/ca.crt \
-    -subj "/C=US/ST=State/L=City/O=Interceptor/OU=Dev/CN=Interceptor-CA"
+# Generate CA (Certificate Authority) — ECDSA P-256
+echo "1. Generating CA (ECDSA P-256)..."
+openssl ecparam -genkey -name prime256v1 -noout -out "$CERT_DIR/ca.key"
+openssl req -new -x509 -days 3650 -key "$CERT_DIR/ca.key" -out "$CERT_DIR/ca.crt" \
+    -subj "/C=US/ST=State/L=City/O=Interceptor/OU=Dev/CN=Interceptor-CA" \
+    -sha384
 
-# Generate Server Certificate for the Proxy
-echo "2. Generating Server certificate..."
-openssl genrsa -out $CERT_DIR/server.key 2048
+# Generate Server Certificate — ECDSA P-256
+echo "2. Generating Server certificate (ECDSA P-256)..."
+openssl ecparam -genkey -name prime256v1 -noout -out "$CERT_DIR/server.key"
 
-# Create server certificate signing request
-openssl req -new -key $CERT_DIR/server.key -out $CERT_DIR/server.csr \
+# Create server CSR
+openssl req -new -key "$CERT_DIR/server.key" -out "$CERT_DIR/server.csr" \
     -subj "/C=US/ST=State/L=City/O=Interceptor/OU=Proxy/CN=localhost"
 
 # Create extensions file for SAN (Subject Alternative Names)
-cat > $CERT_DIR/server.ext << EOF
+cat > "$CERT_DIR/server.ext" << EOF
 authorityKeyIdentifier=keyid,issuer
 basicConstraints=CA:FALSE
-keyUsage = digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
+keyUsage = digitalSignature
+extendedKeyUsage = serverAuth
 subjectAltName = @alt_names
 
 [alt_names]
@@ -36,21 +38,27 @@ IP.2 = 0.0.0.0
 EOF
 
 # Sign server certificate with CA
-openssl x509 -req -in $CERT_DIR/server.csr -CA $CERT_DIR/ca.crt -CAkey $CERT_DIR/ca.key \
-    -CAcreateserial -out $CERT_DIR/server.crt -days 825 -sha256 -extfile $CERT_DIR/server.ext
+openssl x509 -req -in "$CERT_DIR/server.csr" -CA "$CERT_DIR/ca.crt" -CAkey "$CERT_DIR/ca.key" \
+    -CAcreateserial -out "$CERT_DIR/server.crt" -days 825 -sha384 \
+    -extfile "$CERT_DIR/server.ext"
 
-# Generate Client Certificate (for mTLS/certificate-based auth)
-echo "3. Generating Client certificate..."
-openssl genrsa -out $CERT_DIR/client.key 2048
-openssl req -new -key $CERT_DIR/client.key -out $CERT_DIR/client.csr \
+# Generate Client Certificate — ECDSA P-256
+echo "3. Generating Client certificate (ECDSA P-256)..."
+openssl ecparam -genkey -name prime256v1 -noout -out "$CERT_DIR/client.key"
+openssl req -new -key "$CERT_DIR/client.key" -out "$CERT_DIR/client.csr" \
     -subj "/C=US/ST=State/L=City/O=Interceptor/OU=Authority/CN=admin-authority"
-openssl x509 -req -in $CERT_DIR/client.csr -CA $CERT_DIR/ca.crt -CAkey $CERT_DIR/ca.key \
-    -CAcreateserial -out $CERT_DIR/client.crt -days 825 -sha256
+openssl x509 -req -in "$CERT_DIR/client.csr" -CA "$CERT_DIR/ca.crt" -CAkey "$CERT_DIR/ca.key" \
+    -CAcreateserial -out "$CERT_DIR/client.crt" -days 825 -sha384
+
+# Convert client key to PKCS#8 DER format (required by PostgreSQL JDBC driver)
+echo "3a. Converting client key to PKCS#8 DER format..."
+openssl pkcs8 -topk8 -nocrypt -in "$CERT_DIR/client.key" \
+    -out "$CERT_DIR/client.pk8" -outform DER
 
 # Create PKCS12 keystore for Spring Boot
 echo "4. Creating PKCS12 keystore..."
-openssl pkcs12 -export -in $CERT_DIR/server.crt -inkey $CERT_DIR/server.key \
-    -out $CERT_DIR/server.p12 -name interceptor -CAfile $CERT_DIR/ca.crt \
+openssl pkcs12 -export -in "$CERT_DIR/server.crt" -inkey "$CERT_DIR/server.key" \
+    -out "$CERT_DIR/server.p12" -name interceptor -CAfile "$CERT_DIR/ca.crt" \
     -caname root -password pass:changeit
 
 # Create truststore with CA certificate
@@ -67,17 +75,26 @@ if keytool -list -keystore "$CERT_DIR/truststore.p12" \
     -storepass changeit
 fi
 keytool -import -trustcacerts -noprompt -alias interceptor-ca \
-    -file $CERT_DIR/ca.crt -keystore $CERT_DIR/truststore.p12 \
+    -file "$CERT_DIR/ca.crt" -keystore "$CERT_DIR/truststore.p12" \
     -storetype PKCS12 -storepass changeit
 
 # Set permissions
-chmod 600 $CERT_DIR/*.key
-chmod 644 $CERT_DIR/*.crt $CERT_DIR/*.p12
+chmod 600 "$CERT_DIR/ca.key" "$CERT_DIR/server.key" "$CERT_DIR/client.key" "$CERT_DIR/client.pk8"
+chmod 644 "$CERT_DIR/ca.crt" "$CERT_DIR/server.crt" "$CERT_DIR/client.crt" \
+          "$CERT_DIR/server.p12" "$CERT_DIR/truststore.p12"
+
+# Copy keystores to Spring Boot resources
+echo "6. Copying keystores to src/main/resources/ssl/..."
+mkdir -p src/main/resources/ssl
+cp "$CERT_DIR/server.p12" "$CERT_DIR/truststore.p12" src/main/resources/ssl/
 
 echo ""
-echo "✅ Certificates generated successfully in $CERT_DIR/"
+echo "✅ ECDSA P-256 certificates generated successfully in $CERT_DIR/"
 echo ""
 echo "Files created:"
-ls -la $CERT_DIR/
+ls -la "$CERT_DIR/"
 echo ""
-
+echo "Next steps:"
+echo "  1. Start infrastructure: docker-compose up -d"
+echo "  2. Run the application:  source creds.env && mvn spring-boot:run -Dspring-boot.run.profiles=dev"
+echo "  3. Access dashboard:     https://localhost:3000"
