@@ -62,7 +62,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                         SecurityContextHolder.getContext().setAuthentication(auth);
                         log.info("Authenticated user: {}, role: {}, token version: {}", username, role, tokenVersion);
                     } else {
-                        log.warn("Token version mismatch for user {}. Token invalidated by logout.", username);
+                        log.warn("Token version mismatch for user {}", username);
                     }
                 }
             } else {
