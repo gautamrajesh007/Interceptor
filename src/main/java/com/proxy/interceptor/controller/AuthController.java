@@ -67,14 +67,14 @@ public class AuthController {
             LogoutResult result = authService.logout(username, jwtVersion);
 
             if (result.success()) {
-                auditService.log(username, "logout", "User logged out", getClientIp(request));
+                auditService.log(username, "logout", result.message(), getClientIp(request));
                 return ResponseEntity.ok().build();
             } else {
-                auditService.log(username, "logout", "Error logging out", getClientIp(request));
-                return ResponseEntity.badRequest().body(Map.of("error", "Error logging out"));
+                auditService.log(username, "logout", result.message(), getClientIp(request));
+                return ResponseEntity.badRequest().body(Map.of("error", result.message()));
             }
         } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("error", "Internal server error"));
+            return ResponseEntity.badRequest().build();
         }
     }
 
