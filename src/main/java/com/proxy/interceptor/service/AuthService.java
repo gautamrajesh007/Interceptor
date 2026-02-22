@@ -20,7 +20,6 @@ import java.util.Optional;
 public class AuthService {
 
     private final UserRepository userRepository;
-    private final AuditService auditService;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
 
@@ -50,7 +49,7 @@ public class AuthService {
         return new LoginResult(true, token, user, null);
     }
 
-    public LogoutResult logout(String username) {
+    public LogoutResult logout(String username, Integer jwtVersion) {
         Optional<User> userOpt = userRepository.findByUsername(username);
 
         if (userOpt.isEmpty()) {
@@ -59,7 +58,15 @@ public class AuthService {
         }
 
         User user = userOpt.get();
-        int newVersion = (user.getTokenVersion() != null ? user.getTokenVersion() : 0) + 1;
+        Integer dbVersion = user.getTokenVersion() != null ? user.getTokenVersion() : 0;
+
+        // Prevent multiple logouts with the same token
+        if (!dbVersion.equals(jwtVersion)) {
+            log.warn("Logout ignored: Token version mismatch for user {}. Token already invalidated.", username);
+            return new LogoutResult(false, "Token already invalidated");
+        }
+
+        Integer newVersion = dbVersion + 1;
         user.setTokenVersion(newVersion);
         userRepository.save(user);
         log.info("User {} logged out, token version incremented to {}", username, newVersion);
