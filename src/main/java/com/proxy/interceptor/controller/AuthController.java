@@ -44,7 +44,7 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ResponseEntity<?> logout(
-            @RequestHeader(value = "Authorization", required = true) String authHeader,
+            @RequestHeader(value = "Authorization") String authHeader,
             HttpServletRequest request
     ) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
@@ -60,7 +60,7 @@ public class AuthController {
 
             if (result.success()) {
                 auditService.log(username, "logout", "User logged out", getClientIp(request));
-                return ResponseEntity.ok(Map.of("success", true, "message", result.message()));
+                return ResponseEntity.ok().build();
             } else {
                 auditService.log(username, "logout", "Error logging out", getClientIp(request));
                 return ResponseEntity.badRequest().body(Map.of("error", "Error logging out"));
