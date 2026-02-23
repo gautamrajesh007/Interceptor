@@ -50,10 +50,11 @@ openssl req -new -key "$CERT_DIR/client.key" -out "$CERT_DIR/client.csr" \
 openssl x509 -req -in "$CERT_DIR/client.csr" -CA "$CERT_DIR/ca.crt" -CAkey "$CERT_DIR/ca.key" \
     -CAcreateserial -out "$CERT_DIR/client.crt" -days 825 -sha384
 
-# Convert client key to PKCS#8 DER format (required by PostgreSQL JDBC driver)
-echo "3a. Converting client key to PKCS#8 DER format..."
-openssl pkcs8 -topk8 -nocrypt -in "$CERT_DIR/client.key" \
-    -out "$CERT_DIR/client.pk8" -outform DER
+# Create PKCS12 keystore for client certificate (for PostgreSQL JDBC SSL auth)
+echo "3a. Creating PKCS12 client keystore..."
+openssl pkcs12 -export -in "$CERT_DIR/client.crt" -inkey "$CERT_DIR/client.key" \
+    -out "$CERT_DIR/client.p12" -name interceptor-client -CAfile "$CERT_DIR/ca.crt" \
+    -caname root -password pass:changeit
 
 # Create PKCS12 keystore for Spring Boot
 echo "4. Creating PKCS12 keystore..."
@@ -79,9 +80,9 @@ keytool -import -trustcacerts -noprompt -alias interceptor-ca \
     -storetype PKCS12 -storepass changeit
 
 # Set permissions
-chmod 600 "$CERT_DIR/ca.key" "$CERT_DIR/server.key" "$CERT_DIR/client.key" "$CERT_DIR/client.pk8"
+chmod 600 "$CERT_DIR/ca.key" "$CERT_DIR/server.key" "$CERT_DIR/client.key"
 chmod 644 "$CERT_DIR/ca.crt" "$CERT_DIR/server.crt" "$CERT_DIR/client.crt" \
-          "$CERT_DIR/server.p12" "$CERT_DIR/truststore.p12"
+          "$CERT_DIR/server.p12" "$CERT_DIR/truststore.p12" "$CERT_DIR/client.p12"
 
 # Copy keystores to Spring Boot resources
 echo "6. Copying keystores to src/main/resources/ssl/..."

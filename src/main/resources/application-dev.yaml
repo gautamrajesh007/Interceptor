@@ -6,7 +6,7 @@ spring:
 
   # Interceptor's own database (for users, audit, blocked queries) — SSL enabled
   datasource:
-    url: "jdbc:postgresql://localhost:5434/interceptor?ssl=true&sslmode=verify-ca&sslrootcert=./certs/ca.crt&sslcert=./certs/client.crt&sslkey=./certs/client.pk8"
+    url: "jdbc:postgresql://localhost:5434/interceptor?ssl=true&sslmode=verify-ca&sslrootcert=./certs/ca.crt&sslkey=./certs/client.p12&sslpassword=changeit"
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
