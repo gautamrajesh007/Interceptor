@@ -87,13 +87,15 @@ chmod 644 "$CERT_DIR/ca.crt" "$CERT_DIR/server.crt" "$CERT_DIR/client.crt" \
 # Copy keystores to resources
 echo "6. Copying keystores to src/main/resources/ssl/"
 mkdir -p src/main/resources/ssl
-cp "$CERT_DIR/server.p12" "$CERT_DIR/truststore.p12" src/main/resources/ssl/
+cp "$CERT_DIR/server.p12" "$CERT_DIR/client.p12" "$CERT_DIR/truststore.p12" src/main/resources/ssl/
 
 echo ""
 echo "✅ ECDSA P-256 certificates generated successfully in $CERT_DIR/"
 echo ""
-echo "Files created:"
+echo "Files created @ certs:"
 ls -la "$CERT_DIR/"
+echo ""
+ls -la src/main/resources/ssl/
 echo ""
 
 echo "Next steps:"
