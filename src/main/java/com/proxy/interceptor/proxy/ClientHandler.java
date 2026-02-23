@@ -100,6 +100,25 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
         ByteBuf buf = (ByteBuf) msg;
 
         try {
+            // Handle PostgreSQL SSL negotiation from the client (psql)
+            if (!state.sslNegotiated && buf.readableBytes() == 8) {
+                int readerIndex = buf.readerIndex();
+                int length = buf.getInt(readerIndex);
+                int code = buf.getInt(readerIndex + 4);
+
+                // SSLRequest: length=8, code=80877103
+                if (length == 8 && code == 80877103) {
+                    log.debug("{}: Received SSLRequest from client, responding 'N' (proxy handles TLS to backend)", connId);
+                    // Respond with 'N' — the proxy-to-client link is plain TCP,
+                    // while proxy-to-PostgreSQL is already TLS via SslContextFactory
+                    ByteBuf response = ctx.alloc().buffer(1);
+                    response.writeByte('N');
+                    ctx.writeAndFlush(response);
+                    state.sslNegotiated = true;
+                    return;
+                }
+            }
+
             // Wait for server connection to be established
             if (state.serverChannel == null || !state.serverChannel.isActive()) {
                 log.debug("{}: Server not connected yet, buffering message", connId);
