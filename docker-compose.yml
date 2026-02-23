@@ -1,5 +1,5 @@
 services:
-  # Target PostgreSQL Database (the one we're protecting)
+  # Target PostgreSQL Database (the one we're protecting) - SSL enabled
   postgres-target:
     image: postgres:16-alpine
     container_name: interceptor-postgres-target
@@ -11,13 +11,30 @@ services:
       - "5433:5432"  # Exposed on 5433 to avoid conflicts
     volumes:
       - postgres-target-data:/var/lib/postgresql/data
+      - ./certs:/host-certs:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mkdir -p /etc/postgresql/ssl
+        cp /host-certs/server.crt /etc/postgresql/ssl/server.crt
+        cp /host-certs/server.key /etc/postgresql/ssl/server.key
+        cp /host-certs/ca.crt /etc/postgresql/ssl/ca.crt
+        chown -R postgres:postgres /etc/postgresql/ssl
+        chmod 600 /etc/postgresql/ssl/server.key
+        chmod 644 /etc/postgresql/ssl/server.crt /etc/postgresql/ssl/ca.crt
+        exec docker-entrypoint.sh postgres \
+          -c ssl=on \
+          -c ssl_cert_file=/etc/postgresql/ssl/server.crt \
+          -c ssl_key_file=/etc/postgresql/ssl/server.key \
+          -c ssl_ca_file=/etc/postgresql/ssl/ca.crt
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U testuser -d testdb"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # PostgreSQL for Interceptor's own data (users, audit, blocked queries)
+  # PostgreSQL for Interceptor's own data (users, audit, blocked queries) - SSL enabled
   postgres-interceptor:
     image: postgres:16-alpine
     container_name:  interceptor-postgres-app
@@ -29,23 +46,61 @@ services:
       - "5434:5432"  # Exposed on 5434
     volumes:
       - postgres-interceptor-data:/var/lib/postgresql/data
+      - ./certs:/host-certs:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mkdir -p /etc/postgresql/ssl
+        cp /host-certs/server.crt /etc/postgresql/ssl/server.crt
+        cp /host-certs/server.key /etc/postgresql/ssl/server.key
+        cp /host-certs/ca.crt /etc/postgresql/ssl/ca.crt
+        chown -R postgres:postgres /etc/postgresql/ssl
+        chmod 600 /etc/postgresql/ssl/server.key
+        chmod 644 /etc/postgresql/ssl/server.crt /etc/postgresql/ssl/ca.crt
+        exec docker-entrypoint.sh postgres \
+          -c ssl=on \
+          -c ssl_cert_file=/etc/postgresql/ssl/server.crt \
+          -c ssl_key_file=/etc/postgresql/ssl/server.key \
+          -c ssl_ca_file=/etc/postgresql/ssl/ca.crt
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U interceptor -d interceptor"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # Redis for pub/sub, session management, and real-time notifications
+  # Redis for pub/sub, session management, and real-time notifications - TLS on port 6380
   redis:
     image:  redis:7-alpine
     container_name: interceptor-redis
     ports:
-      - "6379:6379"
+      - "6380:6380"
     volumes:
       - redis-data:/data
-    command: redis-server --appendonly yes
+      - ./certs:/host-certs:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mkdir -p /etc/redis/ssl
+        cp /host-certs/server.crt /etc/redis/ssl/server.crt
+        cp /host-certs/server.key /etc/redis/ssl/server.key
+        cp /host-certs/ca.crt /etc/redis/ssl/ca.crt
+        chown -R redis:redis /etc/redis/ssl
+        chmod 600 /etc/redis/ssl/server.key
+        chmod 644 /etc/redis/ssl/server.crt /etc/redis/ssl/ca.crt
+        exec redis-server \
+          --appendonly yes \
+          --tls-port 6380 \
+          --port 0 \
+          --tls-cert-file /etc/redis/ssl/server.crt \
+          --tls-key-file /etc/redis/ssl/server.key \
+          --tls-ca-cert-file /etc/redis/ssl/ca.crt \
+          --tls-protocols "TLSv1.3" \
+          --tls-ciphersuites "TLS_AES_256_GCM_SHA384"
+#        Note: --port 0 disables plain TCP so only TLS on port 6380 is accepted
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "--tls", "--cacert", "/etc/redis/ssl/ca.crt", "-p", "6380", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -53,4 +108,4 @@ services:
 volumes:
   postgres-target-data:
   postgres-interceptor-data:
-  redis-data: 
+  redis-data:
