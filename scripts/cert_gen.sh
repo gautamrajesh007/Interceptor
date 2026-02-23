@@ -10,7 +10,7 @@ echo "🔐 Generating ECDSA (P-256) certificates for development..."
 echo "1. Generating CA ECDSA (P-256)..."
 openssl ecparam -genkey -name prime256v1 -noout -out "$CERT_DIR/ca.key"
 openssl req -new -x509 -days 3650 -key "$CERT_DIR/ca.key" -out "$CERT_DIR/ca.crt" \
-    -subj "/C=US/ST=State/L=City/O=Interceptor/OU=Dev/CN=Interceptor-CA"
+    -subj "/C=US/ST=State/L=City/O=Interceptor/OU=Dev/CN=Interceptor-CA" \
     -sha384
 
 # Generate Server Certificate (ECDSA P-256)
@@ -53,7 +53,7 @@ openssl x509 -req -in "$CERT_DIR/client.csr" -CA "$CERT_DIR/ca.crt" -CAkey "$CER
 echo "3a. Create PKCS12 client keystore..."
 openssl pkcs12 -export -in "$CERT_DIR/client.crt" -inkey "$CERT_DIR/client.key" \
     -out "$CERT_DIR/client.p12" -name interceptor-client -CAfile "$CERT_DIR/ca.crt" \
-    -caname root******
+    -caname root -password pass:changeit
 
 # Create PKCS12 keystore for Spring Boot
 echo "4. Creating PKCS12 keystore..."
