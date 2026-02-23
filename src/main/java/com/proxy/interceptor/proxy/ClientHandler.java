@@ -1,5 +1,6 @@
 package com.proxy.interceptor.proxy;
 
+import com.proxy.interceptor.config.SslContextFactory;
 import com.proxy.interceptor.service.BlockedQueryService;
 import com.proxy.interceptor.service.MetricsService;
 import io.netty.bootstrap.Bootstrap;
@@ -23,6 +24,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
     private final BlockedQueryService blockedQueryService;
     private final MetricsService metricsService;
     private final EventLoopGroupFactory eventLoopGroupFactory;
+    private final SslContextFactory sslContextFactory;
     private Channel clientChannel;
     private ConcurrentHashMap<String, ConnectionState> connections = new ConcurrentHashMap<>();
 
@@ -35,6 +37,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
                          BlockedQueryService blockedQueryService,
                          MetricsService metricsService,
                          EventLoopGroupFactory eventLoopGroupFactory,
+                         SslContextFactory sslContextFactory,
                          Channel clientChannel,
                          ConcurrentHashMap<String, ConnectionState> connections
     ) {
@@ -47,6 +50,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
         this.blockedQueryService = blockedQueryService;
         this.metricsService = metricsService;
         this.eventLoopGroupFactory = eventLoopGroupFactory;
+        this.sslContextFactory = sslContextFactory;
         this.clientChannel = clientChannel;
         this.connections = connections;
     }
@@ -67,6 +71,11 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
                 .handler(new ChannelInitializer<SocketChannel>() {
                     @Override
                     protected void initChannel(SocketChannel ch) {
+                        if (sslContextFactory != null) {
+                            ch.pipeline().addFirst(
+                                    sslContextFactory.newHandler(ch.alloc(), targetHost, targetPort)
+                            );
+                        }
                         ch.pipeline().addLast(
                                 new ServerHandler(connId, clientChannel, metricsService)
                         );
