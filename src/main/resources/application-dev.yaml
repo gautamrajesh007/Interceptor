@@ -54,6 +54,8 @@ proxy:
     enabled: true
     trust-store: ${TRUST_STORE}
     trust-store-password: ${TRUST_STORE_PASSWORD}
+    client-key-store: ${CLIENT_KEY_STORE}
+    client-key-store-password: ${CLIENT_KEY_STORE_PASSWORD}
 
 # Admin dashboard - HTTPS with TLSv1.3
 server:
