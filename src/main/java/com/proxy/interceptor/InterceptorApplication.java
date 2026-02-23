@@ -25,7 +25,7 @@ public class InterceptorApplication {
 			log.info("	=========================================");
 			log.info("		Interceptor Proxy v2.0 Started");
 			log.info("	=========================================");
-			log.info("		Dashboard: http://localhost:3000");
+			log.info("		Dashboard: https://localhost:3000");
 			log.info("		Proxy Port: 5432");
 			log.info("		DB Engine: localhost:5433");
 			log.info("	=========================================");
