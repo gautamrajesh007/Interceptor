@@ -35,6 +35,8 @@ logging:
   level:
     org.springframework.security: debug
     org.springframework.web: debug
+    org.springframework.http: debug
+    io.netty: debug
 
 # Proxy configuration
 proxy:
