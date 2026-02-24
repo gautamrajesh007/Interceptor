@@ -77,30 +77,27 @@ services:
       - "6380:6380"
     volumes:
       - redis-data:/data
-      - ./certs:/host-certs:ro
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        mkdir -p /etc/redis/ssl
-        cp /host-certs/server.crt /etc/redis/ssl/server.crt
-        cp /host-certs/server.key /etc/redis/ssl/server.key
-        cp /host-certs/ca.crt /etc/redis/ssl/ca.crt
-        chown -R redis:redis /etc/redis/ssl
-        chmod 600 /etc/redis/ssl/server.key
-        chmod 644 /etc/redis/ssl/server.crt /etc/redis/ssl/ca.crt
-        exec redis-server \
-          --appendonly yes \
-          --tls-port 6380 \
-          --port 0 \
-          --tls-cert-file /etc/redis/ssl/server.crt \
-          --tls-key-file /etc/redis/ssl/server.key \
-          --tls-ca-cert-file /etc/redis/ssl/ca.crt \
-          --tls-protocols "TLSv1.3" \
-          --tls-ciphersuites "TLS_AES_256_GCM_SHA384"
-#        Note: --port 0 disables plain TCP so only TLS on port 6380 is accepted
+      - ./certs:/etc/redis/ssl:ro
+    command: >
+      redis-server
+      --port 0
+      --tls-port 6380
+      --tls-cert-file /etc/redis/ssl/server.crt
+      --tls-key-file /etc/redis/ssl/server.key
+      --tls-ca-cert-file /etc/redis/ssl/ca.crt
+      --tls-auth-clients yes
+      --tls-protocols "TLSv1.3"
+      --tls-ciphersuites "TLS_AES_256_GCM_SHA384"
+      --appendonly yes
+#     Note: --port 0 disables plain TCP so only TLS on port 6380 is accepted
     healthcheck:
-      test: ["CMD", "redis-cli", "--tls", "--cacert", "/etc/redis/ssl/ca.crt", "-p", "6380", "ping"]
+      test: [ "CMD", "redis-cli",
+              "--tls",
+              "--cacert", "/etc/redis/ssl/ca.crt",
+              "--cert", "/etc/redis/ssl/client.crt",
+              "--key", "/etc/redis/ssl/client.key",
+              "-p", "6380",
+              "PING" ]
       interval: 5s
       timeout: 5s
       retries: 5
