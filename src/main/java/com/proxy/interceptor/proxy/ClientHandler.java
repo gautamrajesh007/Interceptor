@@ -25,6 +25,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
     private final MetricsService metricsService;
     private final EventLoopGroupFactory eventLoopGroupFactory;
     private final SslContextFactory sslContextFactory;
+    private volatile boolean backendReady = false;
     private Channel clientChannel;
     private ConcurrentHashMap<String, ConnectionState> connections = new ConcurrentHashMap<>();
 
@@ -51,6 +52,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
         this.metricsService = metricsService;
         this.eventLoopGroupFactory = eventLoopGroupFactory;
         this.sslContextFactory = sslContextFactory;
+        this.backendReady = (sslContextFactory == null);
         this.clientChannel = clientChannel;
         this.connections = connections;
     }
@@ -101,7 +103,10 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
                                         // 3. Remove this temporary startup handler as negotiation is done
                                         ctx.pipeline().remove(this);
 
-                                        // 4. Forward any remaining bytes in this buffer to the next handler
+                                        // 4: Signal the proxy that it is now safe to forward client data
+                                        backendReady = true;
+
+                                        // 5. Forward any remaining bytes in this buffer to the next handler
                                         if (buf.isReadable()) {
                                             ctx.fireChannelRead(buf);
                                         } else {
@@ -155,7 +160,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
             }
 
             // Wait for server connection to be established
-            if (state.serverChannel == null || !state.serverChannel.isActive()) {
+            if (state.serverChannel == null || !state.serverChannel.isActive() || !backendReady) {
                 log.debug("{}: Server not connected yet, buffering message", connId);
                 scheduleForward(ctx, buf.retain());
                 return;
@@ -285,7 +290,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 
     private void scheduleForward(ChannelHandlerContext ctx, ByteBuf buf) {
         ctx.channel().eventLoop().schedule(() -> {
-            if (state.serverChannel != null && state.serverChannel.isActive()) {
+            if (state.serverChannel != null && state.serverChannel.isActive() && backendReady) {
                 try {
                     processClientMessage(ctx, buf);
                 } finally {
