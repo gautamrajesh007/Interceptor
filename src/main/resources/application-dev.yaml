@@ -33,10 +33,7 @@ spring:
 
 logging:
   level:
-    org.springframework.security: debug
-    org.springframework.web: debug
-    org.springframework.http: debug
-    io.netty: debug
+    com.proxy: debug
 
 # Proxy configuration
 proxy:
