@@ -36,7 +36,6 @@ public class ServerHandler extends ChannelInboundHandlerAdapter {
                 if (buf.getByte(readerIndex) == 'R') {
                     int authType = buf.getInt(readerIndex + 5);
                     if (authType == 10) {
-                        // It's an AuthenticationSASL request. We must strip "-PLUS" from the mechanisms list.
                         int msgLength = buf.getInt(readerIndex + 1);
                         int searchEnd = Math.min(buf.writerIndex(), readerIndex + 1 + msgLength);
                         byte[] plusBytes = "-PLUS".getBytes(StandardCharsets.UTF_8);
@@ -50,12 +49,22 @@ public class ServerHandler extends ChannelInboundHandlerAdapter {
                                 }
                             }
                             if (match) {
-                                // Overwrite "-PLUS" with null bytes (\0).
-                                // The PostgreSQL client reads C-strings and will interpret the double
-                                // null bytes as the end of the available mechanisms list.
-                                for (int j = 0; j < plusBytes.length; j++) {
-                                    buf.setByte(i + j, 0);
+                                // We found "-PLUS". Instead of overwriting with nulls,
+                                // we cleanly remove it by shifting the rest of the packet left.
+                                int shiftStart = i + plusBytes.length;
+                                int shiftLength = buf.writerIndex() - shiftStart;
+
+                                // 1. Shift remaining bytes to the left
+                                for (int k = 0; k < shiftLength; k++) {
+                                    buf.setByte(i + k, buf.getByte(shiftStart + k));
                                 }
+
+                                // 2. Update the packet length field to reflect the removed bytes
+                                buf.setInt(readerIndex + 1, msgLength - plusBytes.length);
+
+                                // 3. Update the buffer's writer index
+                                buf.writerIndex(buf.writerIndex() - plusBytes.length);
+
                                 log.debug("{}: Stripped SCRAM channel binding (-PLUS) from AuthenticationSASL", connId);
                                 break;
                             }
