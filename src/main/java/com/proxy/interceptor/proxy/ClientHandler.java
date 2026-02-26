@@ -63,7 +63,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
         clientChannel = ctx.channel();
 
         // Connect to the PostgreSQL db engine
-        Bootstrap b= new Bootstrap();
+        Bootstrap b = new Bootstrap();
         b.group(ctx.channel().eventLoop())
                 .channel(eventLoopGroupFactory.getSocketChannelClass())
                 .option(ChannelOption.SO_KEEPALIVE, true)
@@ -72,13 +72,48 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
                     @Override
                     protected void initChannel(SocketChannel ch) {
                         if (sslContextFactory != null) {
-                            ch.pipeline().addFirst(
-                                    sslContextFactory.newHandler(ch.alloc(), targetHost, targetPort)
-                            );
+                            // 1. Add a temporary handler to negotiate PostgreSQL SSL
+                            ch.pipeline().addLast(new ChannelInboundHandlerAdapter() {
+                                @Override
+                                public void channelActive(ChannelHandlerContext ctx) {
+                                    // Send PostgreSQL SSLRequest (8 bytes: length 8, magic code 80877103)
+                                    ByteBuf sslRequest = ctx.alloc().buffer(8);
+                                    sslRequest.writeInt(8);
+                                    sslRequest.writeInt(80877103);
+                                    ctx.writeAndFlush(sslRequest);
+                                }
+
+                                @Override
+                                public void channelRead(ChannelHandlerContext ctx, Object msg) {
+                                    ByteBuf buf = (ByteBuf) msg;
+                                    if (buf.readableBytes() > 0) {
+                                        byte response = buf.readByte();
+                                        if (response == 'S') {
+                                            // 2. Server agreed to SSL. Now add standard SslHandler AT THE FRONT
+                                            ctx.pipeline().addFirst(
+                                                    sslContextFactory.newHandler(ctx.alloc(), targetHost, targetPort)
+                                            );
+                                            log.debug("{}: Upgraded backend connection to TLS", connId);
+                                        } else {
+                                            log.error("{}: PostgreSQL server rejected SSL request (responded with '{}')", connId, (char) response);
+                                        }
+
+                                        // 3. Remove this temporary startup handler as negotiation is done
+                                        ctx.pipeline().remove(this);
+
+                                        // 4. Forward any remaining bytes in this buffer to the next handler
+                                        if (buf.isReadable()) {
+                                            ctx.fireChannelRead(buf);
+                                        } else {
+                                            buf.release();
+                                        }
+                                    }
+                                }
+                            });
                         }
-                        ch.pipeline().addLast(
-                                new ServerHandler(connId, clientChannel, metricsService)
-                        );
+
+                        // Add your standard server handler
+                        ch.pipeline().addLast(new ServerHandler(connId, clientChannel, metricsService));
                     }
                 });
 
