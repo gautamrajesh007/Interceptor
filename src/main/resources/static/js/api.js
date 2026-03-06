@@ -22,14 +22,49 @@ const API = (() => {
 
   function getUser() {
     try {
-      return JSON.parse(localStorage.getItem("interceptor_user"));
+      const cached = JSON.parse(localStorage.getItem("interceptor_user"));
+      if (cached) return cached;
+    } catch {
+      // Ignore parse errors and try deriving from token
+    }
+
+    const token = getToken();
+    if (!token) return null;
+
+    const derived = deriveUserFromToken(token);
+    if (derived) setUser(derived);
+    return derived;
+  }
+
+  function setUser(user) {
+    localStorage.setItem("interceptor_user", JSON.stringify(user));
+  }
+
+  function decodeJwtPayload(token) {
+    try {
+      const parts = token.split(".");
+      if (parts.length < 2) return null;
+      const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+      const decoded = atob(payload);
+      return JSON.parse(decoded);
     } catch {
       return null;
     }
   }
 
-  function setUser(user) {
-    localStorage.setItem("interceptor_user", JSON.stringify(user));
+  function deriveUserFromToken(token, fallbackUsername) {
+    const payload = decodeJwtPayload(token);
+    if (!payload) return null;
+
+    const username = payload.sub || payload.username || fallbackUsername;
+    const role = payload.role || payload.authorities || "PEER";
+    if (!username) return null;
+
+    return {
+      id: payload.id || null,
+      username,
+      role: Array.isArray(role) ? role[0] : role,
+    };
   }
 
   // ─── HTTP Helpers ───
@@ -75,9 +110,12 @@ const API = (() => {
       { username, password },
       false,
     );
-    if (data.token) {
-      setToken(data.token);
-      setUser(data.user);
+
+    const token = data.token || data.accessToken;
+    if (token) {
+      setToken(token);
+      const user = data.user || deriveUserFromToken(token, username);
+      if (user) setUser(user);
     }
     return data;
   }
@@ -92,12 +130,26 @@ const API = (() => {
   }
 
   // ─── Query Endpoints ───
-  function getBlockedQueries() {
-    return request("GET", "/api/blocked");
+  async function getBlockedQueries() {
+    try {
+      return await request("GET", "/api/blocked");
+    } catch (err) {
+      if (err && err.status === 404) {
+        return request("GET", "/api/pending");
+      }
+      throw err;
+    }
   }
 
-  function getAllQueries() {
-    return request("GET", "/api/blocked/all");
+  async function getAllQueries() {
+    try {
+      return await request("GET", "/api/blocked/all");
+    } catch (err) {
+      if (err && err.status === 404) {
+        return request("GET", "/api/pending/all");
+      }
+      throw err;
+    }
   }
 
   function approveQuery(id) {
@@ -219,57 +271,31 @@ const API = (() => {
         Authorization: `Bearer ${token}`,
       };
 
+      const subscribe = (topic, event, transform = (v) => v) => {
+        stompClient.subscribe(topic, function (message) {
+          try {
+            const raw = JSON.parse(message.body);
+            const payload = raw && typeof raw === "object" && "data" in raw ? raw.data : raw;
+            emit(event, transform(payload || {}));
+          } catch (e) {
+            console.error("Parse error:", e);
+          }
+        });
+      };
+
       stompClient.connect(
         connectHeaders,
         function onConnect() {
           emit("ws:connected");
           clearTimeout(reconnectTimer);
 
-          // Subscribe to all topics
-          stompClient.subscribe("/topic/blocked", function (message) {
-            try {
-              const data = JSON.parse(message.body);
-              emit("query:blocked", data);
-            } catch (e) {
-              console.error("Parse error:", e);
-            }
-          });
-
-          stompClient.subscribe("/topic/approvals", function (message) {
-            try {
-              const data = JSON.parse(message.body);
-              emit("query:approval", data);
-            } catch (e) {
-              console.error("Parse error:", e);
-            }
-          });
-
-          stompClient.subscribe("/topic/votes", function (message) {
-            try {
-              const data = JSON.parse(message.body);
-              emit("query:vote", data);
-            } catch (e) {
-              console.error("Parse error:", e);
-            }
-          });
-
-          stompClient.subscribe("/topic/logs", function (message) {
-            try {
-              const data = JSON.parse(message.body);
-              emit("audit:log", data);
-            } catch (e) {
-              console.error("Parse error:", e);
-            }
-          });
-
-          stompClient.subscribe("/topic/metrics", function (message) {
-            try {
-              const data = JSON.parse(message.body);
-              emit("metrics:update", data);
-            } catch (e) {
-              console.error("Parse error:", e);
-            }
-          });
+          // Support both current and legacy topic names.
+          subscribe("/topic/blocked", "query:blocked");
+          subscribe("/topic/queries", "query:blocked");
+          subscribe("/topic/approvals", "query:approval");
+          subscribe("/topic/votes", "query:vote");
+          subscribe("/topic/logs", "audit:log");
+          subscribe("/topic/metrics", "metrics:update");
         },
         function onError(err) {
           console.warn("STOMP connection error:", err);

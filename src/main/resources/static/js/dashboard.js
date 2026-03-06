@@ -100,11 +100,12 @@ const Dashboard = (() => {
     });
 
     API.on("query:blocked", (data) => {
+      const queryId = data.queryId || data.id;
       addTimelineEvent(
         "blocked",
         "Query Intercepted",
-        data.preview || data.queryPreview || `Query #${data.queryId}`,
-        data.timestamp,
+        data.preview || data.queryPreview || `Query #${queryId || "?"}`,
+        data.timestamp || data.createdAt,
       );
       showToast("New query intercepted and blocked", "info");
       // Refresh pending queries
@@ -116,11 +117,13 @@ const Dashboard = (() => {
       const status = (data.status || data.type || "").toLowerCase();
       const isApproved =
         status.includes("approved") || status.includes("approve");
+      const queryId = data.queryId || data.id;
+      const actor = data.resolvedBy || data.approvedBy || data.username || "system";
       addTimelineEvent(
         isApproved ? "approved" : "rejected",
         isApproved ? "Query Approved" : "Query Rejected",
-        `Query #${data.queryId} by ${data.resolvedBy || "system"}`,
-        data.timestamp,
+        `Query #${queryId || "?"} by ${actor}`,
+        data.timestamp || data.resolvedAt,
       );
       loadPendingQueries();
       loadAllQueries();
@@ -128,10 +131,13 @@ const Dashboard = (() => {
     });
 
     API.on("query:vote", (data) => {
+      const queryId = data.queryId || data.id;
+      const vote = data.vote || data.decision || "VOTE";
+      const username = data.username || data.user || "unknown";
       addTimelineEvent(
         "vote",
         "Vote Cast",
-        `${data.username} voted ${data.vote} on #${data.queryId}`,
+        `${username} voted ${vote} on #${queryId || "?"}`,
         data.timestamp,
       );
       loadPendingQueries();
@@ -182,7 +188,7 @@ const Dashboard = (() => {
 
     try {
       const result = await API.login(username, password);
-      if (result.token) {
+      if (result.token || result.accessToken || API.getToken()) {
         showApp();
       } else {
         errorEl.textContent = result.error || "Login failed. Please try again.";
@@ -304,8 +310,7 @@ const Dashboard = (() => {
   // ═══════════════════════════════════════
   async function loadMetrics() {
     try {
-      const data = await API.getMetrics();
-      state.metrics = data;
+      state.metrics = await API.getMetrics();
       renderMetrics();
     } catch (err) {
       console.warn("Failed to load metrics:", err);
@@ -313,21 +318,21 @@ const Dashboard = (() => {
   }
 
   function renderMetrics() {
-    const m = state.metrics;
+    const m = normalizeMetrics(state.metrics);
 
-    animateNumber("stat-total", m.totalQueries || 0);
-    animateNumber("stat-blocked", m.blockedQueries || 0);
-    animateNumber("stat-approved", m.approvedQueries || 0);
-    animateNumber("stat-connections", m.activeConnections || 0);
+    animateNumber("stat-total", m.totalQueries);
+    animateNumber("stat-blocked", m.blockedQueries);
+    animateNumber("stat-approved", m.approvedQueries);
+    animateNumber("stat-connections", m.activeConnections);
 
-    $("#stat-rejected").textContent = m.rejectedQueries || 0;
-    $("#stat-errors").textContent = m.errors || 0;
+    $("#stat-rejected").textContent = m.rejectedQueries;
+    $("#stat-errors").textContent = m.errors;
 
     // Update stat bar percentages
     const total = Math.max(m.totalQueries || 1, 1);
-    const blockedPct = Math.round(((m.blockedQueries || 0) / total) * 100);
-    const approvedPct = Math.round(((m.approvedQueries || 0) / total) * 100);
-    const connPct = Math.min(((m.activeConnections || 0) / 50) * 100, 100);
+    const blockedPct = Math.round((m.blockedQueries / total) * 100);
+    const approvedPct = Math.round((m.approvedQueries / total) * 100);
+    const connPct = Math.min((m.activeConnections / 50) * 100, 100);
 
     updateStatBar(0, 100);
     updateStatBar(1, blockedPct);
@@ -391,7 +396,8 @@ const Dashboard = (() => {
   // ─── Pending Queries ───
   async function loadPendingQueries() {
     try {
-      const queries = await API.getBlockedQueries();
+      const raw = await API.getBlockedQueries();
+      const queries = normalizeQueryList(raw).filter((q) => q.status === "PENDING");
       renderPendingList(queries);
     } catch (err) {
       console.warn("Failed to load pending queries:", err);
@@ -401,6 +407,8 @@ const Dashboard = (() => {
   function renderPendingList(queries) {
     const container = $("#pending-list");
     const countBadge = $("#pending-count");
+    const user = API.getUser() || {};
+    const isPeer = user.role === "PEER";
     countBadge.textContent = queries.length;
 
     if (!queries.length) {
@@ -418,7 +426,7 @@ const Dashboard = (() => {
       .map(
         (q, i) => `
             <div class="pending-item" style="animation-delay: ${i * 0.05}s">
-                <div class="pending-checkbox" onclick="Dashboard.approveQuery(${q.id})" title="Quick Approve">
+                <div class="pending-checkbox" onclick="Dashboard.approveQuery(${q.id})" title="${isPeer ? "Quick Vote Approve" : "Quick Approve"}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="20 6 9 17 4 12"/>
                     </svg>
@@ -428,15 +436,17 @@ const Dashboard = (() => {
                     <div class="pending-meta">
                         <span class="badge badge-neutral">${q.queryType || "SQL"}</span>
                         <span>${timeAgo(q.createdAt)}</span>
+                        ${q.connId ? `<span class="badge badge-neutral">${escapeHtml(q.connId)}</span>` : ""}
                         ${q.requiresPeerApproval ? `<span class="badge badge-purple">Peer Review</span>` : ""}
                         ${q.approvalCount > 0 ? `<span>👍 ${q.approvalCount}</span>` : ""}
+                        ${q.rejectionCount > 0 ? `<span>👎 ${q.rejectionCount}</span>` : ""}
                     </div>
                 </div>
                 <div class="pending-actions">
-                    <button class="btn btn-sm btn-approve" onclick="Dashboard.approveQuery(${q.id})" title="Approve">
+                    <button class="btn btn-sm btn-approve" onclick="Dashboard.approveQuery(${q.id})" title="${isPeer ? "Vote Approve" : "Approve"}">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                     </button>
-                    <button class="btn btn-sm btn-reject" onclick="Dashboard.rejectQuery(${q.id})" title="Reject">
+                    <button class="btn btn-sm btn-reject" onclick="Dashboard.rejectQuery(${q.id})" title="${isPeer ? "Vote Reject" : "Reject"}">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
                 </div>
@@ -463,18 +473,20 @@ const Dashboard = (() => {
   // ═══════════════════════════════════════
   async function loadAllQueries() {
     try {
-      const queries = await API.getAllQueries();
-      state.allQueries = queries;
+      const raw = await API.getAllQueries();
+      state.allQueries = normalizeQueryList(raw);
       renderQueriesTable();
     } catch (err) {
       console.warn("Failed to load queries:", err);
       $("#queries-tbody").innerHTML =
-        `<tr><td colspan="6"><div class="table-empty">Failed to load queries</div></td></tr>`;
+        `<tr><td colspan="8"><div class="table-empty">Failed to load queries</div></td></tr>`;
     }
   }
 
   function renderQueriesTable() {
     const tbody = $("#queries-tbody");
+    const user = API.getUser() || {};
+    const isPeer = user.role === "PEER";
     let queries = state.allQueries;
 
     if (state.queryFilter !== "all") {
@@ -482,7 +494,7 @@ const Dashboard = (() => {
     }
 
     if (!queries.length) {
-      tbody.innerHTML = `<tr><td colspan="6"><div class="table-empty">No queries found</div></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8"><div class="table-empty">No queries found</div></td></tr>`;
       return;
     }
 
@@ -493,15 +505,17 @@ const Dashboard = (() => {
                 <td><span class="badge badge-neutral">#${q.id}</span></td>
                 <td><span class="query-preview" title="${escapeHtml(q.queryPreview)}">${escapeHtml(truncate(q.queryPreview, 60))}</span></td>
                 <td><span class="badge badge-neutral">${q.queryType || "—"}</span></td>
+                <td>${q.connId ? `<span class="badge badge-neutral">${escapeHtml(q.connId)}</span>` : "—"}</td>
                 <td>${statusBadge(q.status)}</td>
-                <td>${formatDate(q.createdAt)}</td>
+                <td>${renderVoteSummary(q)}</td>
+                <td>${formatDate(q.resolvedAt || q.createdAt)}</td>
                 <td>
                     <div class="table-actions">
                         ${
                           q.status === "PENDING"
                             ? `
-                            <button class="btn btn-sm btn-approve" onclick="Dashboard.approveQuery(${q.id})">Approve</button>
-                            <button class="btn btn-sm btn-reject" onclick="Dashboard.rejectQuery(${q.id})">Reject</button>
+                            <button class="btn btn-sm btn-approve" onclick="Dashboard.approveQuery(${q.id})">${isPeer ? "Vote Approve" : "Approve"}</button>
+                            <button class="btn btn-sm btn-reject" onclick="Dashboard.rejectQuery(${q.id})">${isPeer ? "Vote Reject" : "Reject"}</button>
                         `
                             : `
                             <button class="btn btn-sm btn-ghost" onclick="Dashboard.showVoteStatus(${q.id})">Details</button>
@@ -515,14 +529,16 @@ const Dashboard = (() => {
       .join("");
   }
 
-  function statusBadge(status) {
-    const map = {
-      PENDING: "badge-warning",
-      APPROVED: "badge-success",
-      REJECTED: "badge-danger",
-      EXPIRED: "badge-neutral",
-    };
-    return `<span class="badge ${map[status] || "badge-neutral"}">${status}</span>`;
+  function renderVoteSummary(q) {
+    const approvals = q.approvalCount || 0;
+    const rejections = q.rejectionCount || 0;
+    const resolvedBy = q.resolvedBy ? ` by ${escapeHtml(q.resolvedBy)}` : "";
+
+    if (!q.requiresPeerApproval && approvals === 0 && rejections === 0) {
+      return q.status === "PENDING" ? "—" : `<span style="color:var(--text-secondary)">${q.status}${resolvedBy}</span>`;
+    }
+
+    return `<span style="white-space:nowrap">👍 ${approvals} / 👎 ${rejections}${resolvedBy}</span>`;
   }
 
   // ─── Query Actions ───
@@ -546,7 +562,7 @@ const Dashboard = (() => {
       loadMetrics();
       if (state.currentPage === "queries") loadAllQueries();
     } catch (err) {
-      showToast(err.error || "Failed to approve query", "error");
+      showToast(err.error || err.message || "Failed to approve query", "error");
     }
   }
 
@@ -569,7 +585,7 @@ const Dashboard = (() => {
       loadMetrics();
       if (state.currentPage === "queries") loadAllQueries();
     } catch (err) {
-      showToast(err.error || "Failed to reject query", "error");
+      showToast(err.error || err.message || "Failed to reject query", "error");
     }
   }
 
@@ -806,39 +822,41 @@ const Dashboard = (() => {
   }
 
   function renderConfig(cfg) {
-    $("#cfg-proxy-port").textContent = cfg.proxy_port || "—";
-    $("#cfg-target-host").textContent = cfg.target_host || "—";
-    $("#cfg-target-port").textContent = cfg.target_port || "—";
+    const normalized = normalizeConfig(cfg);
+
+    $("#cfg-proxy-port").textContent = normalized.proxyPort || "—";
+    $("#cfg-target-host").textContent = normalized.targetHost || "—";
+    $("#cfg-target-port").textContent = normalized.targetPort || "—";
 
     const blockDefault = $("#cfg-block-default");
-    blockDefault.textContent = cfg.block_by_default ? "Enabled" : "Disabled";
-    blockDefault.className = `setting-value badge ${cfg.block_by_default ? "badge-warning" : "badge-success"}`;
+    blockDefault.textContent = normalized.blockByDefault ? "Enabled" : "Disabled";
+    blockDefault.className = `setting-value badge ${normalized.blockByDefault ? "badge-warning" : "badge-success"}`;
 
     const peerApproval = $("#cfg-peer-approval");
-    peerApproval.textContent = cfg.peer_approval_enabled
+    peerApproval.textContent = normalized.peerApprovalEnabled
       ? "Enabled"
       : "Disabled";
-    peerApproval.className = `setting-value badge ${cfg.peer_approval_enabled ? "badge-purple" : "badge-neutral"}`;
+    peerApproval.className = `setting-value badge ${normalized.peerApprovalEnabled ? "badge-purple" : "badge-neutral"}`;
 
-    $("#cfg-min-votes").textContent = cfg.peer_approval_min_votes || "—";
+    $("#cfg-min-votes").textContent = normalized.minVotes || "—";
 
     // Critical keywords
     const criticalEl = $("#cfg-critical-keywords");
-    if (cfg.critical_keywords) {
-      criticalEl.innerHTML = cfg.critical_keywords
-        .split(",")
-        .map((kw) => `<span class="keyword-tag critical">${kw.trim()}</span>`)
-        .join("");
-    }
+    criticalEl.innerHTML = renderKeywordTags(normalized.criticalKeywords, "critical");
 
     // Allowed keywords
     const allowedEl = $("#cfg-allowed-keywords");
-    if (cfg.allowed_keywords) {
-      allowedEl.innerHTML = cfg.allowed_keywords
-        .split(",")
-        .map((kw) => `<span class="keyword-tag allowed">${kw.trim()}</span>`)
-        .join("");
+    allowedEl.innerHTML = renderKeywordTags(normalized.allowedKeywords, "allowed");
+  }
+
+  function renderKeywordTags(keywords, type) {
+    if (!keywords.length) {
+      return '<span style="color:var(--text-tertiary)">—</span>';
     }
+
+    return keywords
+      .map((kw) => `<span class="keyword-tag ${type}">${escapeHtml(kw)}</span>`)
+      .join("");
   }
 
   // ═══════════════════════════════════════
@@ -948,6 +966,7 @@ const Dashboard = (() => {
     if (!dateStr) return "—";
     try {
       const d = new Date(dateStr);
+      if (Number.isNaN(d.getTime())) return dateStr;
       return (
         d.toLocaleDateString("en-US", {
           month: "short",
@@ -963,6 +982,72 @@ const Dashboard = (() => {
     } catch {
       return dateStr;
     }
+  }
+
+  function normalizeMetrics(raw) {
+    const src = raw && typeof raw === "object" ? raw : {};
+    return {
+      totalQueries: Number(src.totalQueries ?? src.queries_intercepted ?? 0),
+      blockedQueries: Number(src.blockedQueries ?? src.queries_blocked ?? 0),
+      approvedQueries: Number(src.approvedQueries ?? src.queries_approved ?? 0),
+      rejectedQueries: Number(src.rejectedQueries ?? src.queries_rejected ?? 0),
+      activeConnections: Number(src.activeConnections ?? src.active_connections ?? 0),
+      errors: Number(src.errors ?? src.error_count ?? 0),
+    };
+  }
+
+  function normalizeQueryList(raw) {
+    const list = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.data)
+        ? raw.data
+        : Array.isArray(raw?.queries)
+          ? raw.queries
+          : [];
+
+    return list.map((q) => normalizeQuery(q));
+  }
+
+  function normalizeQuery(q) {
+    const src = q && typeof q === "object" ? q : {};
+    return {
+      id: src.id ?? src.queryId ?? src.query_id ?? 0,
+      connId: src.connId ?? src.connectionId ?? src.conn_id ?? "",
+      queryType: src.queryType ?? src.type ?? src.query_type ?? "",
+      queryPreview: src.queryPreview ?? src.preview ?? src.query ?? "",
+      status: (src.status || "PENDING").toUpperCase(),
+      createdAt: src.createdAt ?? src.created_at ?? src.timestamp,
+      resolvedAt: src.resolvedAt ?? src.resolved_at ?? null,
+      resolvedBy: src.resolvedBy ?? src.approvedBy ?? src.resolved_by ?? "",
+      requiresPeerApproval: Boolean(src.requiresPeerApproval ?? src.requires_peer_approval),
+      approvalCount: Number(src.approvalCount ?? src.approvals ?? src.approval_count ?? 0),
+      rejectionCount: Number(src.rejectionCount ?? src.rejections ?? src.rejection_count ?? 0),
+    };
+  }
+
+  function normalizeConfig(raw) {
+    const cfg = raw && typeof raw === "object" ? raw : {};
+    return {
+      proxyPort: cfg.proxy_port ?? cfg.proxyPort,
+      targetHost: cfg.target_host ?? cfg.targetHost,
+      targetPort: cfg.target_port ?? cfg.targetPort,
+      blockByDefault: Boolean(cfg.block_by_default ?? cfg.blockByDefault),
+      peerApprovalEnabled: Boolean(
+        cfg.peer_approval_enabled ?? cfg.peerApprovalEnabled,
+      ),
+      minVotes: cfg.peer_approval_min_votes ?? cfg.minVotes,
+      criticalKeywords: normalizeKeywords(cfg.critical_keywords ?? cfg.criticalKeywords),
+      allowedKeywords: normalizeKeywords(cfg.allowed_keywords ?? cfg.allowedKeywords),
+    };
+  }
+
+  function normalizeKeywords(value) {
+    if (!value) return [];
+    if (Array.isArray(value)) return value.map((v) => String(v).trim()).filter(Boolean);
+    return String(value)
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
   }
 
   // ═══════════════════════════════════════
