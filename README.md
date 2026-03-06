@@ -49,7 +49,7 @@ _Intercept, authorize, and audit PostgreSQL queries in real-time with peer appro
                         │              │
                         │  Dashboard   │
                         │  (WebSocket) │
-                        │   :3000      │
+                        │  Port: 443   │
                         │              │
                         └──────────────┘
 ```
@@ -137,7 +137,7 @@ _Intercept, authorize, and audit PostgreSQL queries in real-time with peer appro
 
 5. **Access the dashboard**
    ```
-   Dashboard: https://localhost:3000
+   Dashboard: https://localhost
    Default credentials: admin / 14495abc
    ```
 
@@ -274,7 +274,7 @@ Queries are classified based on keywords:
 #### Login
 
 ```bash
-curl -X POST https://localhost:3000/api/login \
+curl -X POST https://localhost/api/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"14495abc"}'
 ```
@@ -282,14 +282,14 @@ curl -X POST https://localhost:3000/api/login \
 #### Get Pending Queries
 
 ```bash
-curl https://localhost:3000/api/pending \
+curl https://localhost/api/pending \
   -H "Authorization: Bearer <token>"
 ```
 
 #### Approve Query
 
 ```bash
-curl -X POST https://localhost:3000/api/approve \
+curl -X POST https://localhost/api/approve \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"id":1,"nonce":"unique-nonce","timestamp":"2026-02-15T10:00:00Z"}'
@@ -298,7 +298,7 @@ curl -X POST https://localhost:3000/api/approve \
 #### Vote on Query (Peer Mode)
 
 ```bash
-curl -X POST https://localhost:3000/api/vote \
+curl -X POST https://localhost/api/vote \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"id":1,"vote":"APPROVE"}'
@@ -360,13 +360,13 @@ Every action is logged:
 
 ```bash
 # Health check
-curl https://localhost:3000/actuator/health
+curl https://localhost/actuator/health
 
 # Metrics
-curl https://localhost:3000/actuator/metrics
+curl https://localhost/actuator/metrics
 
 # Application info
-curl https://localhost:3000/actuator/info
+curl https://localhost/actuator/info
 ```
 
 ### Metrics Tracked

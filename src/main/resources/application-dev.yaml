@@ -58,7 +58,7 @@ proxy:
 
 # Admin dashboard - HTTPS with TLSv1.3
 server:
-  port: 3000
+  port: 443
   ssl:
     enabled: true
     key-store: ${KEY_STORE}

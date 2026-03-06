@@ -101,5 +101,5 @@ echo ""
 echo "Next steps:"
 echo "  1. Start infrastructure: docker-compose up -d"
 echo "  2. Run the application:  source creds.env && mvn spring-boot:run -Dspring-boot.run.profiles=dev"
-echo "  3. Access dashboard:     https://localhost:3000"
+echo "  3. Access dashboard:     https://localhost"
 
