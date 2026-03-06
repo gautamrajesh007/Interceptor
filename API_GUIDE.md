@@ -1,378 +1,349 @@
 # Interceptor Backend API Guide
 
-This document serves as a comprehensive reference for the Interceptor Backend API. It is intended for frontend developers building client interfaces and for developers integrating with the system directly.
+This guide is the contract reference for frontend and integration clients.
 
-The Interceptor application exposes two main interfaces:
+## How to Use This Guide
 
-1. **REST API**: For administration, query approval workflows, user management, and configuration.
-2. **WebSocket API**: For real-time updates on intercepted queries and approval status.
-3. **TCP Proxy**: The database proxy itself, which clients connect to via standard PostgreSQL drivers.
+The API is documented by feature module. To add/remove features safely:
+
+1. Add/remove one module section.
+2. Update only that section's endpoint table and payload examples.
+3. Update compatibility notes for aliases/deprecations.
 
 ---
 
-## 1. Authentication
+## Module 1: Authentication
 
-The API uses stateless **JWT (JSON Web Token)** authentication.
+JWT-based stateless authentication.
 
-### Login
+### Endpoints
 
-Authenticate a user to receive an access token.
+| Method | Path | Auth | Notes |
+| --- | --- | --- | --- |
+| `POST` | `/api/login` | Public | Returns JWT token |
+| `POST` | `/api/logout` | Public in filter, token-validated in handler | Invalidates current token version |
 
-- **Endpoint**: `POST /api/login`
-- **Access**: Public
-- **Request Body**:
-  ```json
-  {
-    "username": "your_username",
-    "password": "your_password"
-  }
-  ```
-- **Response (200 OK)**:
-  ```json
-  {
-    "token": "eyJhbGciOiJIUzI1NiJ9...",
-    "user": {
-      "id": 1,
-      "username": "admin",
-      "role": "ADMIN"
-    }
-  }
-  ```
+### Login Request
 
-### Logout
+```json
+{
+  "username": "admin",
+  "password": "14495abc"
+}
+```
 
-- **Endpoint**: `POST /api/logout`
-- **Access**: Authenticated
-- **Response**: `{"ok": true}`
+### Login Response (Current)
 
-### Authorization Header
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiJ9..."
+}
+```
 
-For all subsequent requests to protected endpoints, include the JWT in the `Authorization` header:
+### Token Claims Used by Frontend
 
-```http
-Authorization: Bearer <your_token>
+- `sub` -> username
+- `role` -> role (`ADMIN` or `PEER`)
+- `token_version` -> session invalidation support
+
+### Compatibility Notes
+
+- Some clients may still expect a `user` object from login. The current backend returns token-only.
+- Frontend derives user identity from JWT claims when `user` is absent.
+
+---
+
+## Module 2: Query Workflow
+
+Core approval path for intercepted SQL.
+
+### Roles
+
+- `ADMIN`: approve/reject directly.
+- `PEER`: can vote when peer approval is enabled.
+
+### Endpoints
+
+| Method | Path | Auth | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/api/blocked` | `ADMIN` or `PEER` | Pending queries |
+| `GET` | `/api/blocked/all` | `ADMIN` or `PEER` | Full query history |
+| `GET` | `/api/blocked/{id}/votes` | `ADMIN` or `PEER` | Vote status details |
+| `POST` | `/api/approve` | `ADMIN` or `PEER` | Direct approve path |
+| `POST` | `/api/reject` | `ADMIN` or `PEER` | Direct reject path |
+| `POST` | `/api/vote` | `ADMIN` or `PEER` | Vote path (`APPROVE`/`REJECT`) |
+
+### Query Object (Representative)
+
+```json
+{
+  "id": 101,
+  "connId": "db-connection-1",
+  "queryType": "UPDATE",
+  "queryPreview": "UPDATE users SET role = 'ADMIN' WHERE id = 5",
+  "status": "PENDING",
+  "createdAt": "2026-03-06T12:00:00Z",
+  "resolvedAt": null,
+  "resolvedBy": null,
+  "requiresPeerApproval": true,
+  "approvalCount": 1,
+  "rejectionCount": 0
+}
+```
+
+### Approve/Reject Request
+
+```json
+{
+  "id": 101,
+  "nonce": "unique-random-string",
+  "timestamp": "1738855200000"
+}
+```
+
+### Vote Request
+
+```json
+{
+  "id": 101,
+  "vote": "APPROVE",
+  "nonce": "unique-random-string",
+  "timestamp": "1738855200000"
+}
+```
+
+Allowed `vote` values: `APPROVE`, `REJECT`.
+
+### Behavior Notes
+
+- Replay protection applies when both `nonce` and `timestamp` are provided.
+- Duplicate votes can return `403` with details (`duplicate: true`).
+- Vote status endpoint returns aggregated counts and may include voter username lists.
+
+### Compatibility Notes
+
+- Canonical paths are `/api/blocked*`.
+- Frontend still tolerates legacy fallback aliases `/api/pending*`.
+
+---
+
+## Module 3: User Management
+
+Admin-only user lifecycle.
+
+### Endpoints
+
+| Method | Path | Auth |
+| --- | --- | --- |
+| `GET` | `/api/users` | `ADMIN` |
+| `POST` | `/api/users` | `ADMIN` |
+| `DELETE` | `/api/users/{id}` | `ADMIN` |
+
+### Create User Request
+
+```json
+{
+  "username": "peer-user",
+  "password": "strong-password",
+  "role": "PEER"
+}
+```
+
+Current allowed roles: `ADMIN`, `PEER`.
+
+### User Response (Representative)
+
+```json
+{
+  "id": 2,
+  "username": "peer-user",
+  "role": "PEER",
+  "createdAt": "2026-03-06T12:10:00Z",
+  "lastLogin": null
+}
 ```
 
 ---
 
-## 2. Query Management
+## Module 4: Configuration
 
-These endpoints control the core approval workflow for intercepted database queries.
+Proxy configuration snapshot and update acknowledgment.
 
-**Roles Required**: `ADMIN` or `PEER`
+### Endpoints
 
-### Get Pending Queries
+| Method | Path | Auth | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/api/config` | Authenticated | Returns effective config snapshot |
+| `PUT` | `/api/config` | `ADMIN` | Acknowledges request; restart needed |
 
-Retrieve all queries currently blocked and awaiting decision.
+### Get Config Response (Current)
 
-- **Endpoint**: `GET /api/blocked`
-- **Response**:
-  ```json
-  [
-    {
-      "id": 101,
-      "connId": "db-connection-1",
-      "queryType": "UPDATE",
-      "queryPreview": "UPDATE users SET role = 'ADMIN' WHERE id = 5",
-      "status": "PENDING",
-      "createdAt": "2023-10-27T10:00:00Z",
-      "requiresPeerApproval": true,
-      "approvalCount": 1,
-      "rejectionCount": 0
-    }
-  ]
-  ```
-
-### Get All Queries
-
-Retrieve history of all intercepted queries (pending, approved, rejected).
-
-- **Endpoint**: `GET /api/blocked/all`
-
-### Approve Query
-
-Approve a specific pending query.
-
-- **Endpoint**: `POST /api/approve`
-- **Request Body**:
-  ```json
-  {
-    "id": 101,
-    "nonce": "unique-random-string", // Optional: for replay protection
-    "timestamp": "1698400000000" // Optional: for replay protection
-  }
-  ```
-- **Response**: `{"success": true}`
-
-### Reject Query
-
-Reject a pending query.
-
-- **Endpoint**: `POST /api/reject`
-- **Request Body**: Same structure as Approve.
-
-### Cast Vote
-
-For workflows requiring peer consensus.
-
-- **Endpoint**: `POST /api/vote`
-- **Request Body**:
-  ```json
-  {
-    "id": 101,
-    "vote": "APPROVE",
-    "nonce": "unique-random-string",
-    "timestamp": "1698400000000"
-  }
-  ```
-  _Allowed Votes_: `APPROVE`, `REJECT`
-
-### Get Vote Status
-
-Check the current voting status of a query.
-
-- **Endpoint**: `GET /api/blocked/{id}/votes`
-
----
-
-## 3. User Management
-
-Manage platform users and their roles.
-
-**Role Required**: `ADMIN`
-
-### List Users
-
-- **Endpoint**: `GET /api/users`
-- **Response**: List of user objects.
-
-### Create User
-
-- **Endpoint**: `POST /api/users`
-- **Request Body**:
-  ```json
-  {
-    "username": "newuser",
-    "password": "securePass123",
-    "role": "PEER"
-  }
-  ```
-  _Allowed Roles_: `ADMIN`, `PEER`, `OBSERVER`
-
-### Delete User
-
-- **Endpoint**: `DELETE /api/users/{id}`
-
----
-
-## 4. System Configuration & Metrics
-
-Monitor and configure the proxy behavior.
-
-### Get Configuration
-
-- **Endpoint**: `GET /api/config`
-- **Response**:
-  ```json
-  {
-    "proxy_port": 5432,
-    "target_host": "localhost",
-    "block_by_default": true,
-    "critical_keywords": "DROP,DELETE,UPDATE",
-    "peer_approval_enabled": true
-  }
-  ```
-
-### Update Configuration
-
-- **Endpoint**: `PUT /api/config`
-- **Note**: Some changes may require a server restart.
-
-### Get Metrics
-
-Retrieve system performance and usage metrics.
-
-- **Endpoint**: `GET /api/metrics`
-- **Response**:
-  ```json
-  {
-    "queries_intercepted": 1250,
-    "queries_blocked": 45,
-    "active_connections": 12,
-    "uptime_seconds": 3600
-  }
-  ```
-
----
-
-## 5. Audit Logs
-
-View security and activity logs for compliance.
-
-**Role Required**: `ADMIN`
-
-### Get Recent Logs
-
-- **Endpoint**: `GET /api/audit`
-- **Response**:
-  ```json
-  [
-    {
-      "id": 505,
-      "username": "admin",
-      "action": "query_approved",
-      "details": "Query #101 approved",
-      "ipAddress": "192.168.1.50",
-      "timestamp": "2023-10-27T10:05:00Z"
-    }
-  ]
-  ```
-
-### Get Logs by User
-
-- **Endpoint**: `GET /api/audit/user/{username}`
-
----
-
-## 6. Real-time WebSocket API
-
-The API supports real-time updates using **STOMP over WebSocket** (with SockJS support). This is critical for the live dashboard.
-
-**Connection URL**: `https://<host>:3000/ws`
-**Protocol**: STOMP v1.1/1.2
-
-### Connection & Authentication
-
-The WebSocket connection mandates authentication during the initial Handshake or CONNECT frame.
-Pass the JWT token in the `Authorization` header of the STOMP CONNECT frame.
-
-```
-CONNECT
-Authorization:Bearer <your_token>
-accept-version:1.1,1.0
-heart-beat:10000,10000
+```json
+{
+  "proxy_port": 5432,
+  "target_host": "localhost",
+  "target_port": 5433,
+  "block_by_default": true,
+  "critical_keywords": "DROP, ALTER, TRUNCATE",
+  "allowed_keywords": "SELECT, CREATE",
+  "peer_approval_enabled": true,
+  "peer_approval_min_votes": 2
+}
 ```
 
-### Topics (Subscriptions)
+### Update Config Response (Current)
 
-Clients should subscribe to these topics to receive live updates:
-
-1.  **`/topic/queries`**
-    - **Trigger**: A new query is intercepted and blocked by the proxy.
-    - **Payload**:
-      ```json
-      {
-        "type": "NEW_QUERY",
-        "data": {
-          "id": 105,
-          "queryPreview": "DELETE FROM orders WHERE id < 1000",
-          "status": "PENDING"
-        }
-      }
-      ```
-
-2.  **`/topic/approvals`**
-    - **Trigger**: A query status changes (Approved/Rejected/Vote Cast).
-    - **Payload**:
-      ```json
-      {
-        "type": "STATUS_UPDATE",
-        "data": {
-          "queryId": 105,
-          "status": "APPROVED",
-          "approvedBy": "admin"
-        }
-      }
-      ```
+```json
+{
+  "ok": true,
+  "message": "Configuration saved.  Restart required to apply changes."
+}
+```
 
 ---
 
-## 7. Testing Guide using PostgreSQL (`psql`)
+## Module 5: Metrics
 
-This guide explains how to verify the Interceptor is working correctly by connecting to it as a standard PostgreSQL client.
+Live counters for dashboard visibility.
 
-### Prerequisites
+### Endpoints
 
-1.  **Interceptor Running**: Ensure the Spring Boot application is running (e.g., via `mvn spring-boot:run` or Docker).
-2.  **Target Database**: A real PostgreSQL instance must be running on the configured target port (default: 5433).
-3.  **Client Tool**: `psql` (PostgreSQL command line tool) installed.
+| Method | Path | Auth |
+| --- | --- | --- |
+| `GET` | `/api/metrics` | Authenticated |
 
-### Step 1: Connect to the Proxy
+### Response (Current)
 
-Instead of connecting directly to your database (port 5433), connect to the **Interceptor Proxy Port** (default: 5432).
+```json
+{
+  "totalConnections": 20,
+  "activeConnections": 3,
+  "totalQueries": 450,
+  "blockedQueries": 32,
+  "approvedQueries": 20,
+  "rejectedQueries": 12,
+  "errors": 1,
+  "queryTypes": {
+    "SELECT": 200,
+    "UPDATE": 140
+  }
+}
+```
+
+### Compatibility Notes
+
+- Legacy clients may use snake_case metrics keys.
+- Frontend currently normalizes both camelCase and snake_case variants.
+
+---
+
+## Module 6: Audit Logs
+
+Administrative activity and security trail.
+
+### Endpoints
+
+| Method | Path | Auth |
+| --- | --- | --- |
+| `GET` | `/api/audit` | `ADMIN` |
+| `GET` | `/api/audit/user/{username}` | `ADMIN` |
+
+### Log Object (Representative)
+
+```json
+{
+  "id": 505,
+  "username": "admin",
+  "action": "query_approved",
+  "details": "Query #101 approved",
+  "ipAddress": "192.168.1.50",
+  "timestamp": "2026-03-06T12:20:00Z"
+}
+```
+
+---
+
+## Module 7: Real-time WebSocket API
+
+STOMP over SockJS endpoint for live updates.
+
+### Connection
+
+- URL: `/ws`
+- STOMP CONNECT header: `Authorization: Bearer <token>`
+
+### Topics
+
+| Topic | Purpose |
+| --- | --- |
+| `/topic/blocked` | New blocked query event |
+| `/topic/approvals` | Approval/rejection status event |
+| `/topic/votes` | Vote cast event |
+| `/topic/logs` | Audit event |
+| `/topic/metrics` | Metrics update |
+
+### Payload Shape
+
+Topics may publish either:
+
+- Direct event object
+- Wrapped event object with `data` property
+
+Frontend should handle both shapes.
+
+### Compatibility Notes
+
+- Legacy topic alias `/topic/queries` may still be produced/consumed by older clients.
+- Current dashboard subscribes to both `/topic/blocked` and `/topic/queries` for compatibility.
+
+---
+
+## Security and Access Matrix
+
+| Area | Access Rule |
+| --- | --- |
+| Public | Static assets, `/ws/**`, `/api/login`, `/api/logout`, health/docs routes |
+| Admin-only | `/api/users/**`, `/api/config/**`, `/api/audit/**` |
+| Admin/Peer | `/api/blocked/**`, `/api/approve`, `/api/reject`, `/api/vote` |
+| Other | Authenticated |
+
+---
+
+## Deprecation and Reversibility Policy
+
+When changing endpoints or payloads:
+
+1. Keep current canonical API stable.
+2. Add compatibility aliases for one release window.
+3. Document alias in this file under the module's compatibility notes.
+4. Remove alias after migration and update module table only.
+
+This keeps feature additions/removals reversible and isolated.
+
+---
+
+## Test Snippets
+
+### Check pending blocked queries
 
 ```bash
-# Connect to the Interceptor Proxy (acting as Postgres)
-psql -h localhost -p 5432 -U postgres -d postgres
+curl -H "Authorization: Bearer <token>" https://localhost/api/blocked
 ```
 
-_Note: Depending on your config, the username/password should match your backend target database._
+### Approve blocked query
 
-### Step 2: Test "Allowed" Queries
-
-By default, `SELECT` queries are often configured as safe. Run a query that should pass through immediately.
-
-```sql
-postgres=# SELECT 1;
- ?column?
-----------
-        1
-(1 row)
+```bash
+curl -X POST https://localhost/api/approve \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"id":101}'
 ```
 
-**Result**: The query should return immediately without hanging.
+### Reject blocked query
 
-### Step 3: Test "Critical" Queries (Blocking)
-
-Run a query containing a configured critical keyword (e.g., `UPDATE`, `DELETE`, `DROP`).
-
-```sql
-postgres=# UPDATE users SET role = 'admin' WHERE id = 1;
+```bash
+curl -X POST https://localhost/api/reject \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"id":101}'
 ```
-
-**Observation**:
-
-- The terminal running `psql` will **hang**. It is waiting for a response from the proxy.
-- The command has been intercepted and is awaiting approval.
-
-### Step 4: Verify & Approve
-
-1.  **Check API**: Use `curl` or Postman to see the blocked query.
-
-    ```bash
-    curl -H "Authorization: Bearer <your_token>" https://localhost:3000/api/blocked
-    ```
-
-    You should see an entry with `status: "PENDING"`.
-
-2.  **Approve**: Send an approval request.
-
-    ```bash
-    curl -X POST https://localhost:3000/api/approve \
-         -H "Authorization: Bearer <your_token>" \
-         -H "Content-Type: application/json" \
-         -d '{"id": <QUERY_ID>}'
-    ```
-
-3.  **Check `psql`**:
-    - Switch back to your `psql` terminal.
-    - The query that was hanging should now complete successfully.
-    ```
-    UPDATE 1
-    postgres=#
-    ```
-
-### Step 5: Test Rejection
-
-Repeat Step 3, but this time use the `/api/reject` endpoint.
-
-- **Result**: The `psql` client will receive an error message:
-  ```
-  ERROR: Query rejected by administrator.
-  ```
-
-### Troubleshooting
-
-- **Connection Refused**: Ensure Interceptor is running and listening on port 5432.
-- **Authentication Failed**: Verify usage of correct Postgres credentials (the proxy passes authentication through to the real DB).
-- **No Block**: Check `application.yaml` to see if the keyword is actually in the `critical-keywords` list or if `block-by-default` is false.
