@@ -9,267 +9,117 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue.svg)](https://www.postgresql.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-_Intercept, authorize, and audit PostgreSQL queries in real-time with peer approval workflows_
+_Intercept, authorize, and audit PostgreSQL queries in real-time with peer approval workflows._
 
 </div>
 
 ---
 
-## 📖 Overview
+## Overview
 
-**Interceptor** is a sophisticated database authorization proxy that sits between your applications and PostgreSQL databases, providing real-time query interception, peer-based approval workflows, and comprehensive audit logging. Built with enterprise-grade security and scalability in mind, it enables teams to implement database access controls without modifying application code.
+Interceptor is a database authorization proxy that sits between your applications and PostgreSQL. It intercepts SQL traffic, applies policy, and requires human approval for sensitive operations. The web dashboard provides real-time visibility and action controls.
 
-### Key Features
+## Feature Modules
 
-- 🔒 **Real-time Query Interception** - Intercepts and analyzes SQL queries before they reach your database
-- 👥 **Peer Approval Workflow** - Implements configurable peer-based authorization for critical operations
-- 🔍 **Intelligent SQL Classification** - Keyword-based query classification (CRITICAL, ALLOWED, DEFAULT)
-- 📊 **Live Dashboard** - Real-time monitoring and approval interface via WebSocket
-- 🔐 **Multiple Authentication Methods** - Supports both password-based and OAuth2 authentication
-- 📝 **Comprehensive Audit Logging** - Complete audit trail of all queries and approval decisions
-- 🚀 **High Performance** - Built on Netty for non-blocking, asynchronous I/O
-- 🔒 **SSL/TLS Support** - Full encryption support for client and database connections
-- 🛡️ **Replay Attack Protection** - Nonce-based security to prevent replay attacks
-- ⚡ **Redis-backed Notifications** - Real-time pub/sub for instant updates
+The project is documented as independent feature modules so changes can be added/removed with low friction:
 
----
+| Module | Purpose | Main APIs | Can be disabled/changed by |
+| --- | --- | --- | --- |
+| Auth | JWT session management | `/api/login`, `/api/logout` | Replacing auth provider/JWT policy |
+| Query Workflow | Blocking, approvals, peer votes | `/api/blocked*`, `/api/approve`, `/api/reject`, `/api/vote` | Keyword policy + approval settings |
+| Users | Admin user lifecycle | `/api/users*` | Role policy and identity model |
+| Config | Runtime config snapshot/update request | `/api/config` | Config backend implementation |
+| Metrics | Live counters | `/api/metrics` + `/topic/metrics` | Metrics collection source |
+| Audit | Security/activity trace | `/api/audit*`, `/topic/logs` | Retention policy + storage |
+| Realtime | STOMP subscriptions | `/ws`, `/topic/*` | Broker/topic evolution |
 
-## 🏗️ Architecture
-
-```
-┌─────────────┐         ┌──────────────────┐         ┌──────────────┐
-│             │         │                  │         │              │
-│   Client    ├────────►│   Interceptor    ├────────►│  PostgreSQL  │
-│ Application │  :5432  │      Proxy       │  :5433  │   Database   │
-│             │         │                  │         │              │
-└─────────────┘         └──────────────────┘         └──────────────┘
-                               │
-                               │
-                        ┌──────▼───────┐
-                        │              │
-                        │  Dashboard   │
-                        │  (WebSocket) │
-                        │  Port: 443   │
-                        │              │
-                        └──────────────┘
-```
-
-### Components
-
-1. **Proxy Server** (Netty-based TCP proxy)
-   - Listens on port 5432 (configurable)
-   - Intercepts PostgreSQL wire protocol messages
-   - Handles SSL negotiation and encryption
-   - Routes queries to the target database
-
-2. **SQL Classifier**
-   - Analyzes queries using keyword matching
-   - Classifies as CRITICAL, ALLOWED, or DEFAULT
-   - Configurable keyword lists and default policy
-
-3. **Approval Service**
-   - Manages blocked queries awaiting approval
-   - Implements peer voting mechanism
-   - Handles immediate approval by admins
-   - Sends real-time notifications via WebSocket
-
-4. **Audit System**
-   - Logs all queries, approvals, and rejections
-   - Tracks user actions with IP addresses
-   - Replay attack detection and prevention
-
-5. **Dashboard API**
-   - RESTful API for configuration and management
-   - WebSocket endpoints for real-time updates
-   - JWT-based authentication
+This layout keeps docs and implementation decoupled: each module can evolve independently with explicit compatibility notes.
 
 ---
 
-## 🚀 Quick Start
+## Architecture
+
+```text
+Client App -> Interceptor Proxy (:5432) -> Target PostgreSQL (:5433)
+                     |
+                     +-> Dashboard/API (HTTPS, default :443)
+                     +-> Redis pub/sub (TLS :6380)
+```
+
+---
+
+## Quick Start
 
 ### Prerequisites
 
-- Java 21 or higher
-- Docker and Docker Compose
-- Maven 3.6+ (or use the included Maven wrapper)
+- Java 21+
+- Docker + Docker Compose
+- Maven (or `./mvnw`)
 
 ### Installation
 
-1. **Clone the repository**
+1. Clone repository
 
-   ```bash
-   git clone https://github.com/gautamrajesh007/Interceptor.git
-   cd Interceptor
-   ```
-
-2. **Start infrastructure services**
-
-   ```bash
-   docker-compose up -d
-   ```
-
-   This starts:
-   - PostgreSQL target database (port 5433)
-   - PostgreSQL for Interceptor metadata (port 5434)
-   - Redis for pub/sub (port 6379)
-
-3. **Generate SSL Certificates**
-   Run the helper script to generate ECDSA P-256 self-signed certificates for development:
-
-   ```bash
-   chmod +x scripts/cert_gen.sh
-   ./scripts/cert_gen.sh
-   ```
-
-   The script automatically copies `server.p12` and `truststore.p12` to `src/main/resources/ssl/`.
-   Certificate files are placed in `./certs/` and are required for Docker containers and JDBC SSL.
-
-4. **Run the application**
-   Load the environment variables and start the application with the `dev` profile:
-
-   ```bash
-   # Load credentials and run
-   source creds.env
-   mvn spring-boot:run -Dspring-boot.run.profiles=dev
-   ```
-
-   _Note: If `mvn` is not installed, ensure `mvnw` works or install Maven._
-
-5. **Access the dashboard**
-   ```
-   Dashboard: https://localhost
-   Default credentials: admin / 14495abc
-   ```
-
-### Docker Compose Services
-
-The included `docker-compose.yml` provides:
-
-```yaml
-services:
-  # Target PostgreSQL (protected database)
-  postgres-target:
-    - Port: 5433
-    - Database: testdb
-    - User: testuser / testpass@123
-
-  # Interceptor's metadata database
-  postgres-interceptor:
-    - Port: 5434
-    - Database: interceptor
-    - User: interceptor / interceptor123
-
-  # Redis for real-time features
-  redis:
-    - Port: 6379
+```bash
+git clone https://github.com/gautamrajesh007/Interceptor.git
+cd Interceptor
 ```
+
+2. Start infrastructure
+
+```bash
+docker-compose up -d
+```
+
+3. Generate local certs
+
+```bash
+chmod +x scripts/cert_gen.sh
+./scripts/cert_gen.sh
+```
+
+4. Run app (dev profile)
+
+```bash
+source src/main/resources/creds.env
+./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+```
+
+5. Open dashboard
+
+```text
+https://localhost
+Default credentials: admin / 14495abc
+```
+
+### Docker Services (default)
+
+- Target PostgreSQL: `localhost:5433`
+- Interceptor metadata PostgreSQL: `localhost:5434`
+- Redis TLS: `localhost:6380`
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
-Configure the proxy via `application.properties` or `application.yml`:
+Core settings are in `src/main/resources/application-dev.yaml`.
 
-### Proxy Settings
-
-```properties
-# Proxy listening port (clients connect here)
-proxy.listen-port=5432
-
-# Target PostgreSQL database
-proxy.target-host=localhost
-proxy.target-port=5433
-
-# Query classification
-proxy.block-by-default=false
-proxy.critical-keywords=DROP,DELETE,TRUNCATE,ALTER,GRANT
-proxy.allowed-keywords=SELECT,INSERT,UPDATE
-
-# SSL/TLS configuration
-proxy.ssl.enabled=false
-proxy.ssl.key-store=classpath:keystore.p12
-proxy.ssl.key-store-password=changeit
-proxy.ssl.client-auth=false
-```
-
-### Approval Workflow
-
-```properties
-# Enable peer approval workflow
-approval.peer-enabled=true
-
-# Minimum number of approvals required
-approval.min-votes=2
-```
-
-### Database Configuration
-
-```properties
-# Interceptor's metadata database
-spring.datasource.url=jdbc:postgresql://localhost:5434/interceptor
-spring.datasource.username=interceptor
-spring.datasource.password=interceptor123
-
-# Redis for pub/sub
-spring.data.redis.host=localhost
-spring.data.redis.port=6379
-```
-
-### JWT Authentication
-
-```properties
-jwt.secret=your-secret-key-change-in-production
-jwt.expiration=86400000
-```
+- Proxy: `proxy.listen-port`, `proxy.target-*`, `proxy.block-by-default`
+- Classification: `proxy.critical-keywords`, `proxy.allowed-keywords`
+- Approval: `approval.peer-enabled`, `approval.min-votes`
+- Security: `jwt.*`, `server.ssl.*`, `proxy.ssl.*`
 
 ---
 
-## 📚 Usage
+## API Usage
 
-### Connecting Applications
+### Query Workflow Summary
 
-Simply point your application's database connection to the proxy:
+- `ADMIN`: direct approve/reject.
+- `PEER`: casts votes (`APPROVE` or `REJECT`) when peer flow is enabled.
+- Replay protection fields (`nonce`, `timestamp`) are supported on approve/reject/vote requests.
 
-```java
-// Before: Direct connection
-jdbc:postgresql://localhost:5433/testdb
-
-// After: Through Interceptor
-jdbc:postgresql://localhost:5432/testdb
-```
-
-No application code changes required!
-
-### Query Classification
-
-Queries are classified based on keywords:
-
-1. **CRITICAL** - Requires approval
-   - Matches any keyword in `proxy.critical-keywords`
-   - Example: `DROP TABLE users`, `DELETE FROM orders`
-
-2. **ALLOWED** - Passes through
-   - Matches any keyword in `proxy.allowed-keywords`
-   - Example: `SELECT * FROM products`
-
-3. **DEFAULT** - Follows `proxy.block-by-default` policy
-   - No keyword match
-   - Example: Custom functions, stored procedures
-
-### Approval Workflow
-
-#### For Admin Users
-
-- **Immediate approval/rejection** of any blocked query
-- No peer voting required
-
-#### For Peer Users (when peer approval enabled)
-
-- **Vote** on blocked queries (APPROVE or REJECT)
-- Query executes when `approval.min-votes` approvals reached
-- Query cancelled if any rejection vote cast
-
-### REST API Examples
+### REST Examples
 
 #### Login
 
@@ -282,7 +132,7 @@ curl -X POST https://localhost/api/login \
 #### Get Pending Queries
 
 ```bash
-curl https://localhost/api/pending \
+curl https://localhost/api/blocked \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -292,7 +142,7 @@ curl https://localhost/api/pending \
 curl -X POST https://localhost/api/approve \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
-  -d '{"id":1,"nonce":"unique-nonce","timestamp":"2026-02-15T10:00:00Z"}'
+  -d '{"id":1,"nonce":"unique-nonce","timestamp":"1738855200000"}'
 ```
 
 #### Vote on Query (Peer Mode)
@@ -301,168 +151,82 @@ curl -X POST https://localhost/api/approve \
 curl -X POST https://localhost/api/vote \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
-  -d '{"id":1,"vote":"APPROVE"}'
+  -d '{"id":1,"vote":"APPROVE","nonce":"unique-nonce","timestamp":"1738855200000"}'
 ```
 
----
+### Compatibility Notes
 
-## 🔐 Security Features
+The frontend currently supports both canonical and legacy contracts to reduce breakage during migrations:
 
-### SSL/TLS Support
+- Canonical pending endpoints: `/api/blocked`, `/api/blocked/all`
+- Legacy fallback endpoints still tolerated by UI: `/api/pending`, `/api/pending/all`
+- Canonical realtime topic: `/topic/blocked`; UI also listens to legacy `/topic/queries`
+- Login canonical response: `{ "token": "..." }` (UI can derive user identity from JWT claims)
 
-- **TLSv1.3 exclusively** across all 5 network connections
-- **ECDSA P-256** certificates (generated by `scripts/cert_gen.sh`)
-- **AES-256-GCM** symmetric encryption via `TLS_AES_256_GCM_SHA384` cipher suite
-- **ECDHE** key exchange for perfect forward secrecy
-- Connections protected: Web UI (HTTPS), WebSocket (WSS), Proxy→PostgreSQL, JDBC, Redis
-
-### Authentication
-
-- **Local Authentication**: Username/password with BCrypt hashing
-- **OAuth2**: GitHub, Google, and other providers supported
-- **JWT Tokens**: Stateless session management
-
-### Replay Attack Protection
-
-- Nonce-based request validation
-- Timestamp verification
-- Request hash tracking in audit log
-
-### Audit Trail
-
-Every action is logged:
-
-- Query interceptions
-- Approval/rejection decisions
-- User logins and logouts
-- Configuration changes
-- Failed authentication attempts
+For full endpoint and payload details, see `API_GUIDE.md`.
 
 ---
 
-## 🛠️ Technology Stack
+## Security Notes
 
-- **Core Framework**: Spring Boot 4.0.1
-- **Network Layer**: Netty (async I/O)
-- **Database**: PostgreSQL 16
-- **Cache/PubSub**: Redis 7
-- **Security**: Spring Security + JWT
-- **ORM**: Spring Data JPA + Hibernate
-- **Protocol**: PostgreSQL Wire Protocol
-- **Real-time**: WebSocket (STOMP)
-- **Build Tool**: Maven
+- JWT-based stateless auth
+- BCrypt password hashing
+- TLS-enabled web/proxy/redis paths in dev profile
+- Nonce + timestamp replay checks on sensitive mutation endpoints
+- Audit log coverage for authentication and query decision flow
 
 ---
 
-## 📊 Monitoring & Observability
+## Development
 
-### Spring Boot Actuator Endpoints
-
-```bash
-# Health check
-curl https://localhost/actuator/health
-
-# Metrics
-curl https://localhost/actuator/metrics
-
-# Application info
-curl https://localhost/actuator/info
-```
-
-### Metrics Tracked
-
-- Total queries processed
-- Blocked queries count
-- Approval/rejection rates
-- Active connections
-- Query latency
-
----
-
-## 🧪 Development
-
-### Running Tests
+### Run Tests
 
 ```bash
 ./mvnw test
 ```
 
-### Building for Production
+### Build
 
 ```bash
 ./mvnw clean package -DskipTests
 java -jar target/interceptor-0.0.1-SNAPSHOT.jar
 ```
 
-### Hot Reload (Development)
-
-Spring Boot DevTools is included for automatic restart during development.
-
 ---
 
-## 📁 Project Structure
+## Project Structure
 
-```
+```text
 src/main/java/com/proxy/interceptor/
-├── config/              # Configuration classes (Security, SSL, WebSocket)
-├── controller/          # REST API controllers
-├── dto/                 # Data transfer objects
-├── model/               # JPA entities
-├── proxy/               # Core proxy logic (Netty handlers)
-│   ├── ProxyServer.java          # Main proxy server
-│   ├── ClientHandler.java        # Client connection handler
-│   ├── SqlClassifier.java        # Query classification
-│   └── WireProtocolHandler.java  # PostgreSQL protocol parser
-├── repository/          # JPA repositories
-├── security/            # JWT and authentication
-├── service/             # Business logic
-│   ├── AuthService.java
-│   ├── BlockedQueryService.java
-│   ├── AuditService.java
-│   └── MetricsService.java
-└── InterceptorApplication.java   # Main entry point
+  config/       security, websocket, redis wiring
+  controller/   REST controllers
+  dto/          request/response contracts
+  model/        JPA entities
+  proxy/        Netty proxy pipeline
+  repository/   data access
+  security/     JWT auth/filter components
+  service/      business logic
 ```
 
 ---
 
-## ���� Contributing
+## Extending or Removing Features
 
-Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+To keep changes modular, update docs and code using this pattern per feature:
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+1. Add/remove one module row in `Feature Modules`.
+2. Add/remove one section in `API_GUIDE.md`.
+3. Add/remove route/topic entries in frontend adapters (`src/main/resources/static/js/api.js`, `src/main/resources/static/js/dashboard.js`).
+4. Note compatibility behavior (supported aliases, deprecation window, removal date).
 
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This avoids cross-cutting doc edits and keeps reversions straightforward.
 
 ---
 
-## 🙏 Acknowledgments
+## Contributing
 
-- Built with [Spring Boot](https://spring.io/projects/spring-boot)
-- Powered by [Netty](https://netty.io/)
-- PostgreSQL wire protocol implementation inspired by the community
+Contributions are welcome. Open an issue for major changes before submitting a PR.
 
----
+## License
 
-## 📧 Contact
-
-**Gautam Rajesh** - [@gautamrajesh007](https://github.com/gautamrajesh007)
-
-Project Link: [https://github.com/gautamrajesh007/Interceptor](https://github.com/gautamrajesh007/Interceptor)
-
----
-
-<div align="center">
-
-**⭐ Star this repository if you find it helpful!**
-
-Made with ❤️ for database security
-
-</div>
+MIT - see `LICENSE`.
