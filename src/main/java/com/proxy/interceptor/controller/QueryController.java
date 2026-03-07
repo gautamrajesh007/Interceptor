@@ -6,6 +6,7 @@ import com.proxy.interceptor.model.BlockedQuery;
 import com.proxy.interceptor.service.AuditService;
 import com.proxy.interceptor.service.BlockedQueryService;
 import com.proxy.interceptor.service.ReplayProtectionService;
+import com.proxy.interceptor.util.RequestUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -49,7 +50,7 @@ public class QueryController {
             HttpServletRequest httpRequest
     ) {
         String username = (String) httpRequest.getAttribute("username");
-        String clientIp = getClientIp(httpRequest);
+        String clientIp = RequestUtils.getClientIp(httpRequest);
 
         // Replay protection
         if (request.nonce() != null && request.timestamp() != null) {
@@ -79,7 +80,7 @@ public class QueryController {
             HttpServletRequest httpRequest
     ) {
         String username = (String) httpRequest.getAttribute("username");
-        String clientIp = getClientIp(httpRequest);
+        String clientIp = RequestUtils.getClientIp(httpRequest);
 
         // Replay protection
         if (request.nonce() != null && request.timestamp() != null) {
@@ -109,7 +110,7 @@ public class QueryController {
             HttpServletRequest httpRequest
     ) {
         String username = (String) httpRequest.getAttribute("username");
-        String clientIp = getClientIp(httpRequest);
+        String clientIp = RequestUtils.getClientIp(httpRequest);
 
         // Replay protection
         if (request.nonce() != null && request.timestamp() != null) {
@@ -129,13 +130,5 @@ public class QueryController {
             String.format("Vote %s on query #%d", request.vote(), request.id()), clientIp);
 
         return ResponseEntity.ok(result);
-    }
-
-    private String getClientIp(HttpServletRequest request) {
-        String xForwardedFor = request.getHeader("X-Forwarded-For");
-        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-            return xForwardedFor.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
     }
 }
