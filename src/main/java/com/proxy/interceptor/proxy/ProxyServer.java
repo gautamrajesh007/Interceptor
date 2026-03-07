@@ -70,6 +70,19 @@ public class ProxyServer {
         bossGroup = eventLoopGroupFactory.createBossGroup();
         workerGroup = eventLoopGroupFactory.createWorkerGroup();
 
+        // Build the shared context once
+        ProxyContext ctx = new ProxyContext(
+                targetHost,
+                targetPort,
+                sqlClassifier,
+                protocolHandler,
+                blockedQueryService,
+                metricsService,
+                eventLoopGroupFactory,
+                sslContextFactory,
+                connections
+        );
+
         ServerBootstrap b = new ServerBootstrap();
         b.group(bossGroup, workerGroup)
                 .channel(eventLoopGroupFactory.getServerChannelClass())
@@ -81,22 +94,7 @@ public class ProxyServer {
                         connections.put(connId, state);
                         metricsService.trackConnection();
 
-                        ch.pipeline().addLast(
-                                new ClientHandler(
-                                        connId,
-                                        state,
-                                        targetHost,
-                                        targetPort,
-                                        sqlClassifier,
-                                        protocolHandler,
-                                        blockedQueryService,
-                                        metricsService,
-                                        eventLoopGroupFactory,
-                                        sslContextFactory,
-                                        ch,
-                                        connections
-                                )
-                        );
+                        ch.pipeline().addLast(new ClientHandler(connId, state, ctx, ch));
                     }
                 });
 
