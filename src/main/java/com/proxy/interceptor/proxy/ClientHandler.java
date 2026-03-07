@@ -7,6 +7,7 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
 import io.netty.channel.socket.SocketChannel;
+import io.netty.handler.ssl.SslHandler;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.concurrent.ConcurrentHashMap;
@@ -74,7 +75,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
                     @Override
                     protected void initChannel(SocketChannel ch) {
                         if (sslContextFactory != null) {
-                            // 1. Add a temporary handler to negotiate PostgreSQL SSL
+                            // 1. Add a temporary handler to negotiate PostgreSQL SSL with the DB
                             ch.pipeline().addLast(new ChannelInboundHandlerAdapter() {
                                 @Override
                                 public void channelActive(ChannelHandlerContext ctx) {
@@ -91,11 +92,11 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
                                     if (buf.readableBytes() > 0) {
                                         byte response = buf.readByte();
                                         if (response == 'S') {
-                                            // 2. Server agreed to SSL. Now add standard SslHandler AT THE FRONT
+                                            // 2. DB agreed to SSL — install backend SslHandler (TLS B)
                                             ctx.pipeline().addFirst(
-                                                    sslContextFactory.newHandler(ctx.alloc(), targetHost, targetPort)
+                                                    sslContextFactory.newBackendHandler(ctx.alloc(), targetHost, targetPort)
                                             );
-                                            log.debug("{}: Upgraded backend connection to TLS", connId);
+                                            log.debug("{}: Upgraded backend connection to TLS (TLS B)", connId);
                                         } else {
                                             log.error("{}: PostgreSQL server rejected SSL request (responded with '{}')", connId, (char) response);
                                         }
@@ -140,7 +141,8 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
         ByteBuf buf = (ByteBuf) msg;
 
         try {
-            // Handle PostgreSQL SSL negotiation from the client (psql)
+            // ────────────────────── Frontend TLS Negotiation (TLS A) ──────────────────────
+            // Handle PostgreSQL SSLRequest from the client (psql, DataGrip, etc.)
             if (!state.sslNegotiated && buf.readableBytes() == 8) {
                 int readerIndex = buf.readerIndex();
                 int length = buf.getInt(readerIndex);
@@ -148,12 +150,42 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 
                 // SSLRequest: length=8, code=80877103
                 if (length == 8 && code == 80877103) {
-                    log.debug("{}: Received SSLRequest from client, responding 'N' (proxy handles TLS to backend)", connId);
-                    // Respond with 'N' — the proxy-to-client link is plain TCP,
-                    // while proxy-to-PostgreSQL is already TLS via SslContextFactory
-                    ByteBuf response = ctx.alloc().buffer(1);
-                    response.writeByte('N');
-                    ctx.writeAndFlush(response);
+                    if (sslContextFactory != null) {
+                        log.debug("{}: Received SSLRequest from client, responding 'S' (frontend TLS enabled)", connId);
+
+                        // 1. Respond with 'S' — we accept SSL
+                        ByteBuf response = ctx.alloc().buffer(1);
+                        response.writeByte('S');
+                        ctx.writeAndFlush(response).addListener((ChannelFutureListener) writeFuture -> {
+                            if (writeFuture.isSuccess()) {
+                                // 2. Install SslHandler at the front of the pipeline (TLS A)
+                                SslHandler sslHandler = sslContextFactory.newFrontendHandler(ctx.alloc());
+                                ctx.pipeline().addFirst("frontendSsl", sslHandler);
+
+                                // 3. Wait for TLS handshake to complete before processing more data
+                                sslHandler.handshakeFuture().addListener(handshakeFuture -> {
+                                    if (handshakeFuture.isSuccess()) {
+                                        log.info("{}: Frontend TLS handshake completed (TLS A)", connId);
+                                        state.frontendSslDone = true;
+                                    } else {
+                                        log.error("{}: Frontend TLS handshake failed: {}", connId,
+                                                handshakeFuture.cause().getMessage());
+                                        ctx.close();
+                                    }
+                                });
+                            } else {
+                                log.error("{}: Failed to send 'S' response to client", connId);
+                                ctx.close();
+                            }
+                        });
+                    } else {
+                        // SSL not configured — reject SSL negotiation
+                        log.debug("{}: Received SSLRequest from client, responding 'N' (SSL not configured)", connId);
+                        ByteBuf response = ctx.alloc().buffer(1);
+                        response.writeByte('N');
+                        ctx.writeAndFlush(response);
+                    }
+
                     state.sslNegotiated = true;
                     return;
                 }
