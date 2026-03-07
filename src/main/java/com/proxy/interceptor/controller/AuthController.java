@@ -3,7 +3,6 @@ package com.proxy.interceptor.controller;
 import com.proxy.interceptor.dto.LoginRequest;
 import com.proxy.interceptor.dto.LoginResult;
 import com.proxy.interceptor.dto.LogoutResult;
-import com.proxy.interceptor.security.JwtTokenProvider;
 import com.proxy.interceptor.service.AuditService;
 import com.proxy.interceptor.service.AuthService;
 import com.proxy.interceptor.util.RequestUtils;
@@ -22,7 +21,6 @@ public class AuthController {
 
     private final AuthService authService;
     private final AuditService auditService;
-    private final JwtTokenProvider jwtTokenProvider;
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request,
@@ -48,7 +46,6 @@ public class AuthController {
             @RequestHeader(value = "Authorization") String authHeader,
             HttpServletRequest request
     ) {
-        // Check if Authorization header exists and Bearer is present
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             return ResponseEntity.badRequest().body(Map.of("error", "Missing or invalid token"));
         }
@@ -56,22 +53,13 @@ public class AuthController {
         String token = authHeader.substring(7);
 
         try {
-            // Validate token structure/expiration
-            if (!jwtTokenProvider.validateToken(token)) {
-                return ResponseEntity.status(401).body(Map.of("error", "Invalid or expired token"));
-            }
-
-            String username = jwtTokenProvider.getUsernameFromToken(token);
-            Integer jwtVersion = jwtTokenProvider.getTokenVersionFromToken(token);
-            if (jwtVersion == null) jwtVersion = 0;
-
-            LogoutResult result = authService.logout(username, jwtVersion);
+            LogoutResult result = authService.logout(token);
 
             if (result.success()) {
-                auditService.log(username, "logout", result.message(), RequestUtils.getClientIp(request));
+                auditService.log(result.username(), "logout", result.message(), RequestUtils.getClientIp(request));
                 return ResponseEntity.ok().build();
             } else {
-                auditService.log(username, "logout", result.message(), RequestUtils.getClientIp(request));
+                auditService.log(result.username(), "logout", result.message(), RequestUtils.getClientIp(request));
                 return ResponseEntity.badRequest().body(Map.of("error", result.message()));
             }
         } catch (Exception e) {

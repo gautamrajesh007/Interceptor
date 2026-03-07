@@ -4,5 +4,6 @@ import jakarta.validation.constraints.NotBlank;
 
 public record LogoutResult(
         @NotBlank boolean success,
-        @NotBlank String message
+        @NotBlank String message,
+        String username
 ) {}

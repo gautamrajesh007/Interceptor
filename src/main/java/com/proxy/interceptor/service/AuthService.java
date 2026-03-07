@@ -2,6 +2,7 @@ package com.proxy.interceptor.service;
 
 import com.proxy.interceptor.dto.LoginResult;
 import com.proxy.interceptor.dto.LogoutResult;
+import com.proxy.interceptor.dto.TokenClaims;
 import com.proxy.interceptor.model.Role;
 import com.proxy.interceptor.model.User;
 import com.proxy.interceptor.repository.UserRepository;
@@ -38,7 +39,6 @@ public class AuthService {
             return new LoginResult(false, null, null, "Invalid credentials");
         }
 
-        // Update last login
         user.setLastLogin(Instant.now());
         userRepository.save(user);
 
@@ -49,28 +49,40 @@ public class AuthService {
         return new LoginResult(true, token, user, null);
     }
 
-    public LogoutResult logout(String username, Integer jwtVersion) {
+    public LogoutResult logout(String token) {
+        // 1. Validate the token in the service layer
+        if (!jwtTokenProvider.validateToken(token)) {
+            return new LogoutResult(false, "Invalid or expired token", "UNKNOWN");
+        }
+
+        // 2. Parse the claims
+        TokenClaims claims = jwtTokenProvider.parseToken(token);
+        String username = claims.username();
+        Integer jwtVersion = claims.tokenVersion();
+        if (jwtVersion == null) jwtVersion = 0;
+
+        // 3. Invalidate
         Optional<User> userOpt = userRepository.findByUsername(username);
 
         if (userOpt.isEmpty()) {
             log.warn("Logout attempted for non-existent user: {}", username);
-            return new LogoutResult(false, "User not found");
+            return new LogoutResult(false, "User not found", username);
         }
 
         User user = userOpt.get();
         Integer dbVersion = user.getTokenVersion() != null ? user.getTokenVersion() : 0;
 
-        // Prevent multiple logouts with the same token
         if (!dbVersion.equals(jwtVersion)) {
             log.warn("Logout ignored: Token version mismatch for user {}. Token already invalidated.", username);
-            return new LogoutResult(false, "Token already invalidated");
+            return new LogoutResult(false, "Token already invalidated", username);
         }
 
         Integer newVersion = dbVersion + 1;
         user.setTokenVersion(newVersion);
         userRepository.save(user);
+
         log.info("User {} logged out, token version incremented to {}", username, newVersion);
-        return new LogoutResult(true, "Logout successful");
+        return new LogoutResult(true, "Logout successful", username);
     }
 
     public User createUser(String username, String password, Role role) {
