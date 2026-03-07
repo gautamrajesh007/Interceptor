@@ -2,6 +2,7 @@ package com.proxy.interceptor.controller;
 
 import com.proxy.interceptor.config.ApprovalProperties;
 import com.proxy.interceptor.config.ProxyProperties;
+import com.proxy.interceptor.dto.ApiResponse;
 import com.proxy.interceptor.service.AuditService;
 import com.proxy.interceptor.util.RequestUtils;
 import jakarta.servlet.http.HttpServletRequest;
@@ -23,7 +24,7 @@ public class ConfigController {
     private final ApprovalProperties approvalProperties;
 
     @GetMapping
-    public ResponseEntity<Map<String, Object>> getConfig() {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getConfig() {
         Map<String, Object> config = new HashMap<>();
         config.put("proxy_port", proxyProperties.getListenPort());
         config.put("target_host", proxyProperties.getTargetHost());
@@ -33,26 +34,24 @@ public class ConfigController {
         config.put("allowed_keywords", String.join(", ", proxyProperties.getAllowedKeywords()));
         config.put("peer_approval_enabled", approvalProperties.isPeerEnabled());
         config.put("peer_approval_min_votes", approvalProperties.getMinVotes());
-        return ResponseEntity.ok(config);
+        return ResponseEntity.ok(ApiResponse.ok(config));
     }
 
     @PutMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<?> updateConfig(
+    public ResponseEntity<ApiResponse<?>> updateConfig(
             @RequestBody Map<String, Object> newConfig,
             HttpServletRequest request
     ) {
-
         // Note: Not implemented. After review, we can use Spring Cloud Config for dynamic configuration.
         // For now, we just audit the attempt.
-
         String username = (String) request.getAttribute("username");
         auditService.log(username, "config_update_attempted",
             "Configuration update requested (requires restart)", RequestUtils.getClientIp(request));
 
-        return ResponseEntity.ok(Map.of(
+        return ResponseEntity.ok(ApiResponse.ok(Map.of(
             "ok", true,
             "message", "Configuration saved.  Restart required to apply changes."
-        ));
+        )));
     }
 }
