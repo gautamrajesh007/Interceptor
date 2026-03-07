@@ -1,5 +1,6 @@
 package com.proxy.interceptor.controller;
 
+import com.proxy.interceptor.dto.ApiResponse;
 import com.proxy.interceptor.dto.LoginRequest;
 import com.proxy.interceptor.dto.LoginResult;
 import com.proxy.interceptor.dto.LogoutResult;
@@ -23,7 +24,7 @@ public class AuthController {
     private final AuditService auditService;
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request,
+    public ResponseEntity<ApiResponse<?>> login(@Valid @RequestBody LoginRequest request,
                                    HttpServletRequest httpServletRequest) {
         LoginResult result = authService.login(request.username(), request.password());
 
@@ -31,23 +32,21 @@ public class AuthController {
             auditService.log(request.username(), "login", "Login successful",
                     RequestUtils.getClientIp(httpServletRequest));
 
-            return ResponseEntity.ok(Map.of(
-                    "token", result.token()
-            ));
+            return ResponseEntity.ok(ApiResponse.ok(Map.of("token", result.token())));
         }
 
         auditService.log(request.username(), "login", "Unauthorized access",
                     RequestUtils.getClientIp(httpServletRequest));
-        return ResponseEntity.status(401).body(Map.of("error", result.error()));
+        return ResponseEntity.status(401).body(ApiResponse.error(result.error()));
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<?> logout(
-            @RequestHeader(value = "Authorization") String authHeader,
+    public ResponseEntity<ApiResponse<?>> logout(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
             HttpServletRequest request
     ) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Missing or invalid token"));
+            return ResponseEntity.badRequest().body(ApiResponse.error("Missing or invalid token"));
         }
 
         String token = authHeader.substring(7);
@@ -57,13 +56,13 @@ public class AuthController {
 
             if (result.success()) {
                 auditService.log(result.username(), "logout", result.message(), RequestUtils.getClientIp(request));
-                return ResponseEntity.ok().build();
+                return ResponseEntity.ok(ApiResponse.ok(null));
             } else {
                 auditService.log(result.username(), "logout", result.message(), RequestUtils.getClientIp(request));
-                return ResponseEntity.badRequest().body(Map.of("error", result.message()));
+                return ResponseEntity.badRequest().body(ApiResponse.error(result.message()));
             }
         } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest().body(ApiResponse.error("Logout failed"));
         }
     }
 }

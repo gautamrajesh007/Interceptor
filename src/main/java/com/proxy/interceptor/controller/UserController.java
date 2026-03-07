@@ -1,5 +1,6 @@
 package com.proxy.interceptor.controller;
 
+import com.proxy.interceptor.dto.ApiResponse;
 import com.proxy.interceptor.dto.CreateUserRequest;
 import com.proxy.interceptor.dto.UserResponse;
 import com.proxy.interceptor.model.Role;
@@ -29,12 +30,12 @@ public class UserController {
     private final AuditService auditService;
 
     @GetMapping
-    public ResponseEntity<List<UserResponse>> getAllUsers() {
-        return ResponseEntity.ok(userService.getAllUsers());
+    public ResponseEntity<ApiResponse<List<UserResponse>>> getAllUsers() {
+        return ResponseEntity.ok(ApiResponse.ok(userService.getAllUsers()));
     }
 
     @PostMapping
-    public ResponseEntity<?> createUser(
+    public ResponseEntity<ApiResponse<UserResponse>> createUser(
             @Valid @RequestBody CreateUserRequest request,
             HttpServletRequest httpRequest
     ) {
@@ -47,19 +48,21 @@ public class UserController {
                 "Created user: " + request.username() + " with role: " + role,
                 RequestUtils.getClientIp(httpRequest));
 
-        return ResponseEntity.ok(userService.mapToResponse(user));
+        return ResponseEntity.ok(ApiResponse.ok(userService.mapToResponse(user)));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> deleteUser(@PathVariable Long id, HttpServletRequest httpRequest) {
-        String adminUsername = RequestUtils.getUsername(httpRequest);
-
+    public ResponseEntity<ApiResponse<?>> deleteUser(
+            @PathVariable Long id,
+            HttpServletRequest httpRequest
+    ) {
         // Exceptions will be caught by GlobalExceptionHandler
+        String adminUsername = RequestUtils.getUsername(httpRequest);
         userService.deleteUser(id, adminUsername);
 
         auditService.log(adminUsername, "user_deleted", "Deleted user #" + id,
                 RequestUtils.getClientIp(httpRequest));
 
-        return ResponseEntity.ok(Map.of("success", true));
+        return ResponseEntity.ok(ApiResponse.ok(Map.of("success", true)));
     }
 }

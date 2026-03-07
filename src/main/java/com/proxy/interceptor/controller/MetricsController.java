@@ -1,5 +1,6 @@
 package com.proxy.interceptor.controller;
 
+import com.proxy.interceptor.dto.ApiResponse;
 import com.proxy.interceptor.service.MetricsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -17,7 +18,7 @@ public class MetricsController {
     private final MetricsService metricsService;
 
     @GetMapping
-    public ResponseEntity<Map<String, Object>> getMetrics() {
-        return ResponseEntity.ok(metricsService.getMetrics());
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getMetrics() {
+        return ResponseEntity.ok(ApiResponse.ok(metricsService.getMetrics()));
     }
 }

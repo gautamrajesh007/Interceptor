@@ -1,5 +1,6 @@
 package com.proxy.interceptor.controller;
 
+import com.proxy.interceptor.dto.ApiResponse;
 import com.proxy.interceptor.dto.ApprovalRequest;
 import com.proxy.interceptor.dto.VoteRequest;
 import com.proxy.interceptor.model.BlockedQuery;
@@ -26,34 +27,33 @@ public class QueryController {
     private final ReplayProtectionService replayProtectionService;
 
     @GetMapping("/blocked")
-    public ResponseEntity<List<BlockedQuery>> getBlockedQueries() {
-        return ResponseEntity.ok(blockedQueryService.getPendingQueries());
+    public ResponseEntity<ApiResponse<List<BlockedQuery>>> getBlockedQueries() {
+        return ResponseEntity.ok(ApiResponse.ok(blockedQueryService.getPendingQueries()));
     }
 
     @GetMapping("/blocked/all")
-    public ResponseEntity<List<BlockedQuery>> getAllQueries() {
-        return ResponseEntity.ok(blockedQueryService.getAllQueries());
+    public ResponseEntity<ApiResponse<List<BlockedQuery>>> getAllQueries() {
+        return ResponseEntity.ok(ApiResponse.ok(blockedQueryService.getAllQueries()));
     }
 
     @GetMapping("/blocked/{id}/votes")
-    public ResponseEntity<?> getVoteStatus(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<?>> getVoteStatus(@PathVariable Long id) {
         var status = blockedQueryService.getVoteStatus(id);
         if (status == null) {
-            return ResponseEntity.notFound().build();
+            return ResponseEntity.status(404).body(ApiResponse.error("Query or vote status not found"));
         }
-        return ResponseEntity.ok(status);
+        return ResponseEntity.ok(ApiResponse.ok(status));
     }
 
     @PostMapping("/approve")
-    public ResponseEntity<?> approveQuery(
+    public ResponseEntity<ApiResponse<?>> approveQuery(
             @Valid @RequestBody ApprovalRequest request,
             HttpServletRequest httpRequest
     ) {
         String username = (String) httpRequest.getAttribute("username");
         String clientIp = RequestUtils.getClientIp(httpRequest);
 
-        // Extracted Replay Protection
-        ResponseEntity<?> replayError = validateReplay(request, "approve", username, clientIp);
+        ResponseEntity<ApiResponse<?>> replayError = validateReplay(request, "approve", username, clientIp);
         if (replayError != null) return replayError;
 
         boolean ok = blockedQueryService.approveQuery(request.id(), username);
@@ -63,19 +63,18 @@ public class QueryController {
                     "Query #" + request.id() + " approved", clientIp);
         }
 
-        return ResponseEntity.ok(Map.of("success", ok));
+        return ResponseEntity.ok(ApiResponse.ok(Map.of("success", ok)));
     }
 
     @PostMapping("/reject")
-    public ResponseEntity<?> rejectQuery(
+    public ResponseEntity<ApiResponse<?>> rejectQuery(
             @Valid @RequestBody ApprovalRequest request,
             HttpServletRequest httpRequest
     ) {
         String username = (String) httpRequest.getAttribute("username");
         String clientIp = RequestUtils.getClientIp(httpRequest);
 
-        // Extracted Replay Protection
-        ResponseEntity<?> replayError = validateReplay(request, "reject", username, clientIp);
+        ResponseEntity<ApiResponse<?>> replayError = validateReplay(request, "reject", username, clientIp);
         if (replayError != null) return replayError;
 
         boolean ok = blockedQueryService.rejectQuery(request.id(), username);
@@ -85,35 +84,34 @@ public class QueryController {
                     "Query #" + request.id() + " rejected", clientIp);
         }
 
-        return ResponseEntity.ok(Map.of("success", ok));
+        return ResponseEntity.ok(ApiResponse.ok(Map.of("success", ok)));
     }
 
     @PostMapping("/vote")
-    public ResponseEntity<?> vote(
+    public ResponseEntity<ApiResponse<?>> vote(
             @Valid @RequestBody VoteRequest request,
             HttpServletRequest httpRequest
     ) {
         String username = (String) httpRequest.getAttribute("username");
         String clientIp = RequestUtils.getClientIp(httpRequest);
 
-        // Extracted Replay Protection for Voting
-        ResponseEntity<?> replayError = validateVoteReplay(request, username, clientIp);
+        ResponseEntity<ApiResponse<?>> replayError = validateVoteReplay(request, username, clientIp);
         if (replayError != null) return replayError;
 
         Map<String, Object> result = blockedQueryService.addVote(request.id(), username, request.vote());
 
-        // Check for duplicates and return 403 error if detected
-        if (Boolean.TRUE.equals(result.get("duplicate"))) return ResponseEntity.status(403).body(result);
+        if (Boolean.TRUE.equals(result.get("duplicate"))) {
+            return ResponseEntity.status(403).body(ApiResponse.error((String) result.get("error")));
+        }
 
         auditService.log(username, "query_vote",
             String.format("Vote %s on query #%d", request.vote(), request.id()), clientIp);
 
-        return ResponseEntity.ok(result);
+        return ResponseEntity.ok(ApiResponse.ok(result));
     }
 
     /** Helper Methods for Replay Protection Deduplication */
-
-    private ResponseEntity<?> validateReplay(ApprovalRequest request,
+    private ResponseEntity<ApiResponse<?>> validateReplay(ApprovalRequest request,
                                              String action,
                                              String username,
                                              String clientIp) {
@@ -123,13 +121,13 @@ public class QueryController {
                     action + ":" + request.id(), username)) {
                 auditService.log(username, "replay_attack_blocked",
                         "Attempted replay on " + action + " for query #" + request.id(), clientIp);
-                return ResponseEntity.status(403).body(Map.of("error", "Replay attack detected"));
+                return ResponseEntity.status(403).body(ApiResponse.error("Replay attack detected"));
             }
         }
-        return null; // Valid
+        return null;
     }
 
-    private ResponseEntity<?> validateVoteReplay(VoteRequest request,
+    private ResponseEntity<ApiResponse<?>> validateVoteReplay(VoteRequest request,
                                                  String username,
                                                  String clientIp) {
         if (request.nonce() != null && request.timestamp() != null) {
@@ -138,9 +136,9 @@ public class QueryController {
                     "vote:" + request.id() + ":" + request.vote(), username)) {
                 auditService.log(username, "replay_attack_blocked",
                         "Attempted replay on vote for query #" + request.id(), clientIp);
-                return ResponseEntity.status(403).body(Map.of("error", "Replay attack detected"));
+                return ResponseEntity.status(403).body(ApiResponse.error("Replay attack detected"));
             }
         }
-        return null; // Valid
+        return null;
     }
 }

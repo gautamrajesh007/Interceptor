@@ -1,5 +1,6 @@
 package com.proxy.interceptor.controller;
 
+import com.proxy.interceptor.dto.ApiResponse;
 import com.proxy.interceptor.model.AuditLog;
 import com.proxy.interceptor.service.AuditService;
 import lombok.RequiredArgsConstructor;
@@ -21,14 +22,14 @@ public class AuditController {
     private final AuditService auditService;
 
     @GetMapping
-    public ResponseEntity<List<AuditLog>> getAuditLogs() {
-        return ResponseEntity.ok(auditService.getRecentLogs());
+    public ResponseEntity<ApiResponse<List<AuditLog>>> getAuditLogs() {
+        return ResponseEntity.ok(ApiResponse.ok(auditService.getRecentLogs()));
     }
 
     @GetMapping("/user/{username}")
-    public ResponseEntity<List<AuditLog>> getLogsByUser(
+    public ResponseEntity<ApiResponse<List<AuditLog>>> getLogsByUser(
             @PathVariable String username
     ) {
-        return ResponseEntity.ok(auditService.getLogsByUser(username));
+        return ResponseEntity.ok(ApiResponse.ok(auditService.getLogsByUser(username)));
     }
 }
