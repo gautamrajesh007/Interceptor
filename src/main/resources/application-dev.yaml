@@ -55,6 +55,9 @@ proxy:
     trust-store-password: ${TRUST_STORE_PASSWORD}
     client-key-store: ${CLIENT_KEY_STORE}
     client-key-store-password: ${CLIENT_KEY_STORE_PASSWORD}
+    # Frontend: client -> proxy server identity presented to psql or other postgres client.
+    server-key-store: ${PROXY_SERVER_KEY_STORE}
+    server-key-store-password: ${PROXY_SERVER_KEY_STORE_PASSWORD}
 
 # Admin dashboard - HTTPS with TLSv1.3
 server:
