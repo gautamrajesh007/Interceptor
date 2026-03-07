@@ -1,5 +1,6 @@
 package com.proxy.interceptor.service;
 
+import com.proxy.interceptor.repository.AuditLogRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -18,6 +19,7 @@ public class ReplayProtectionService {
 
     private final RedisTemplate<String, Object> redisTemplate;
     private final AuditService auditService;
+    private final AuditLogRepository auditLogRepository;
 
     private static final String NONCE_PREFIX = "nonce:";
     private static final Duration NONCE_TTL = Duration.ofMinutes(5);
@@ -85,6 +87,6 @@ public class ReplayProtectionService {
     * Check if a specific request hash was already processed
      */
     public boolean wasRequestProcessed(String requestHash) {
-        return auditService.isReplayedRequest(requestHash);
+        return auditLogRepository.findByRequestHash(requestHash).isPresent();
     }
 }
