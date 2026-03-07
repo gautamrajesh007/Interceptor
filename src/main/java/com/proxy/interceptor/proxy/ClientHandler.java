@@ -60,7 +60,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 
         b.connect(ctx.targetHost(), ctx.targetPort()).addListener((ChannelFutureListener) future -> {
             if (future.isSuccess()) {
-                state.serverChannel = future.channel();
+                state.setServerChannel(future.channel());
                 log.debug("{}: Connected to PostgreSQL db engine", connId);
             } else {
                 log.error("{}: Failed to connect to PostgreSQL", connId);
@@ -78,7 +78,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
         try {
             // -------------------- Frontend TLS Negotiation (TLS A) --------------------
             // Handle PostgreSQL SSLRequest from the client (psql, DataGrip, etc.)
-            if (!state.sslNegotiated && buf.readableBytes() == 8) {
+            if (!state.isSslNegotiated() && buf.readableBytes() == 8) {
                 int readerIndex = buf.readerIndex();
                 int length = buf.getInt(readerIndex);
                 int code = buf.getInt(readerIndex + 4);
@@ -101,7 +101,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
                                 sslHandler.handshakeFuture().addListener(handshakeFuture -> {
                                     if (handshakeFuture.isSuccess()) {
                                         log.info("{}: Frontend TLS handshake completed (TLS A)", connId);
-                                        state.frontendSslDone = true;
+                                        state.setFrontendSslDone(true);
                                     } else {
                                         log.error("{}: Frontend TLS handshake failed: {}", connId,
                                                 handshakeFuture.cause().getMessage());
@@ -121,13 +121,13 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
                         nettyCtx.writeAndFlush(response);
                     }
 
-                    state.sslNegotiated = true;
+                    state.setSslNegotiated(true);
                     return;
                 }
             }
 
             // Wait for server connection to be established
-            if (state.serverChannel == null || !state.serverChannel.isActive() || !backendReady) {
+            if (state.getServerChannel() == null || !state.getServerChannel().isActive() || !backendReady) {
                 log.debug("{}: Server not connected yet, buffering message", connId);
                 scheduleForward(nettyCtx, buf.retain());
                 return;
@@ -189,9 +189,9 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 
             if (ctx.sqlClassifier().shouldBlock(sql)) {
                 log.debug("{}: Starting blocked extended batch", connId);
-                state.inExtendedBatch = true;
-                state.batchQuery = new StringBuilder(sql);
-                state.batchBuffers.add(buf.retainedDuplicate());
+                state.setInExtendedBatch(true);
+                state.setBatchQuery(new StringBuilder(sql));
+                state.getBatchBuffers().add(buf.retainedDuplicate());
                 return;
             }
         }
@@ -199,32 +199,32 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void handleExtendedProtocolMessage(ByteBuf buf) {
-        if (state.inExtendedBatch) {
-            state.batchBuffers.add(buf.retainedDuplicate());
+        if (state.isInExtendedBatch()) {
+            state.getBatchBuffers().add(buf.retainedDuplicate());
         } else {
             forwardToServer(buf.retain());
         }
     }
 
     private void handleSyncMessage(ChannelHandlerContext nettyCtx, ByteBuf buf) {
-        if (!state.inExtendedBatch) {
+        if (!state.isInExtendedBatch()) {
             forwardToServer(buf.retain());
             return;
         }
 
-        state.batchBuffers.add(buf.retainedDuplicate());
-        String sql = state.batchQuery.toString();
+        state.getBatchBuffers().add(buf.retainedDuplicate());
+        String sql = state.getBatchQuery().toString();
 
         log.info("{}: 🚫BLOCKED Extended Query: {}", connId, truncate(sql));
         ctx.metricsService().trackQuery("EXTENDED");
         ctx.metricsService().trackBlocked();
 
         ByteBuf combinedBuf = nettyCtx.alloc().compositeBuffer()
-                .addComponents(true, state.batchBuffers.toArray(new ByteBuf[0]));
+                .addComponents(true, state.getBatchBuffers().toArray(new ByteBuf[0]));
 
-        state.inExtendedBatch = false;
-        state.batchQuery = new StringBuilder();
-        state.batchBuffers.clear();
+        state.setInExtendedBatch(false);
+        state.setBatchQuery(new StringBuilder());
+        state.getBatchBuffers().clear();
 
         ctx.blockedQueryService().addBlockedQuery(
                 connId,
@@ -238,8 +238,8 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 
     /** Forwarding helpers */
     private void forwardToServer(ByteBuf buf) {
-        if (state.serverChannel != null && state.serverChannel.isActive()) {
-            state.serverChannel.writeAndFlush(buf);
+        if (state.getServerChannel() != null && state.getServerChannel().isActive()) {
+            state.getServerChannel().writeAndFlush(buf);
         } else {
             buf.release(); // prevent leak if server not available
             log.warn("{}: Cannot forward - server channel inactive", connId);
@@ -248,7 +248,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 
     private void scheduleForward(ChannelHandlerContext nettyCtx, ByteBuf buf) {
         nettyCtx.channel().eventLoop().schedule(() -> {
-            if (state.serverChannel != null && state.serverChannel.isActive() && backendReady) {
+            if (state.getServerChannel() != null && state.getServerChannel().isActive() && backendReady) {
                 try {
                     processClientMessage(nettyCtx, buf);
                 } finally {
@@ -280,8 +280,8 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
         ctx.blockedQueryService().cleanupConnection(connId);
         state.resetBatch();
 
-        if (state.serverChannel != null) {
-            state.serverChannel.close();
+        if (state.getServerChannel() != null) {
+            state.getServerChannel().close();
         }
     }
 
