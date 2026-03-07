@@ -1,5 +1,6 @@
 package com.proxy.interceptor.proxy;
 
+import com.proxy.interceptor.config.ProxyProperties;
 import com.proxy.interceptor.config.SslContextFactory;
 import com.proxy.interceptor.service.BlockedQueryService;
 import com.proxy.interceptor.service.MetricsService;
@@ -13,7 +14,6 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,18 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Slf4j
 public class ProxyServer {
 
-    @Value("${proxy.listen-port}")
-    private int listenPort;
-
-    @Value("${proxy.target-host}")
-    private String targetHost;
-
-    @Value("${proxy.target-port}")
-    private int targetPort;
-
-    @Value("${proxy.ssl.enabled}")
-    private boolean sslEnabled;
-
+    private final ProxyProperties proxyProperties;
     private final SqlClassifier sqlClassifier;
     private final WireProtocolHandler protocolHandler;
     private final BlockedQueryService blockedQueryService;
@@ -49,13 +38,15 @@ public class ProxyServer {
     private final ConcurrentHashMap<String, ConnectionState> connections = new ConcurrentHashMap<>();
     private final AtomicInteger connectionCounter = new AtomicInteger(0);
 
-    public ProxyServer(SqlClassifier sqlClassifier,
+    public ProxyServer(ProxyProperties proxyProperties,
+                       SqlClassifier sqlClassifier,
                        WireProtocolHandler protocolHandler,
                        BlockedQueryService blockedQueryService,
                        MetricsService metricsService,
                        EventLoopGroupFactory eventLoopGroupFactory,
                        @Autowired(required = false) @Nullable SslContextFactory sslContextFactory
     ) {
+        this.proxyProperties = proxyProperties;
         this.sqlClassifier = sqlClassifier;
         this.protocolHandler = protocolHandler;
         this.blockedQueryService = blockedQueryService;
@@ -72,8 +63,8 @@ public class ProxyServer {
 
         // Build the shared context once
         ProxyContext ctx = new ProxyContext(
-                targetHost,
-                targetPort,
+                proxyProperties.getTargetHost(),
+                proxyProperties.getTargetPort(),
                 sqlClassifier,
                 protocolHandler,
                 blockedQueryService,
@@ -98,8 +89,8 @@ public class ProxyServer {
                     }
                 });
 
-        serverChannel = b.bind(listenPort).sync().channel();
-        log.info("PostgreSQL Proxy listening on {}", listenPort);
+        serverChannel = b.bind(proxyProperties.getListenPort()).sync().channel();
+        log.info("PostgreSQL Proxy listening on {}", proxyProperties.getListenPort());
     }
 
     @PreDestroy
