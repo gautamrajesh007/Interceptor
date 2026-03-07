@@ -1,12 +1,12 @@
 package com.proxy.interceptor.service;
 
+import com.proxy.interceptor.config.ApprovalProperties;
 import com.proxy.interceptor.dto.PendingQuery;
 import com.proxy.interceptor.model.*;
 import com.proxy.interceptor.repository.BlockedQueryRepository;
 import io.netty.buffer.ByteBuf;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,12 +27,7 @@ public class BlockedQueryService {
     private final BlockedQueryRepository blockedQueryRepository;
     private final RedisTemplate<String, Object> redisTemplate;
     private final AuditService auditService;
-
-    @Value("${approval.peer-enabled}")
-    private boolean peerApprovalEnabled;
-
-    @Value("${approval.min-votes}")
-    private int minVotes;
+    private final ApprovalProperties approvalProperties;
 
     // In-memory store for pending queries with their callbacks
     private final ConcurrentHashMap<Long, PendingQuery> pendingQueries = new ConcurrentHashMap<>();
@@ -53,7 +48,7 @@ public class BlockedQueryService {
                 .connId(connId)
                 .queryType(QueryType.valueOf(queryType))
                 .queryPreview(sql.length() > 4000 ? sql.substring(0, 4000) : sql)
-                .requiresPeerApproval(peerApprovalEnabled)
+                .requiresPeerApproval(approvalProperties.isPeerEnabled())
                 .nonce(nonce)
                 .build();
 
@@ -219,12 +214,12 @@ public class BlockedQueryService {
         blockedQueryRepository.save(query);
 
         // Check threshold
-        if (pending.approvals().size() >= minVotes) {
+        if (pending.approvals().size() >= approvalProperties.getMinVotes()) {
             approveQuery(id, "Peer Approval System");
             return Map.of("success", true, "duplicate", false, "autoResolved", true, "action", "approved");
         }
 
-        if (pending.rejections().size() >= minVotes) {
+        if (pending.rejections().size() >= approvalProperties.getMinVotes()) {
             rejectQuery(id, "Peer Approval System");
             return Map.of("success", true, "duplicate", false, "autoResolved", true, "action", "rejected");
         }
