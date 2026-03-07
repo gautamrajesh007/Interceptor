@@ -20,14 +20,14 @@ import java.util.Collections;
 @Slf4j
 public class SslContextFactory {
 
-    // ── Backend (Proxy → DB) trust store ──
+    // -- Backend (Proxy → DB) trust store --
     @Value("${proxy.ssl.trust-store}")
     private Resource trustStoreResource;
 
     @Value("${proxy.ssl.trust-store-password}")
     private String trustStorePassword;
 
-    // ── Frontend (Client → Proxy) key store — the proxy's own server identity ──
+    // -- Frontend (Client → Proxy) key store — the proxy's own server identity --
     @Value("${proxy.ssl.server-key-store}")
     private Resource serverKeyStoreResource;
 
@@ -46,7 +46,7 @@ public class SslContextFactory {
         initFrontendContext();
     }
 
-    // ────────────────────── Backend (Proxy → PostgreSQL) ──────────────────────
+    // -------------------- Backend (Proxy → PostgreSQL) --------------------
 
     private void initBackendContext() throws Exception {
         KeyStore trustStore = KeyStore.getInstance("PKCS12");
@@ -69,7 +69,7 @@ public class SslContextFactory {
         log.info("Backend SSL context initialized (TLSv1.3, TLS_AES_256_GCM_SHA384)");
     }
 
-    // ────────────────────── Frontend (Client → Proxy) ──────────────────────
+    // -------------------- Frontend (Client → Proxy) --------------------
 
     private void initFrontendContext() throws Exception {
         KeyStore keyStore = KeyStore.getInstance("PKCS12");
@@ -91,7 +91,7 @@ public class SslContextFactory {
         log.info("Frontend SSL context initialized (TLSv1.3, TLS_AES_256_GCM_SHA384)");
     }
 
-    // ────────────────────── Handler factories ���─────────────────────
+    // -------------------- Handler factories --------------------
 
     /**
      * Create an SslHandler for the backend channel (proxy acts as TLS client to DB).
