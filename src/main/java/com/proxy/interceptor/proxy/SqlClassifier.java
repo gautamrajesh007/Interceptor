@@ -1,23 +1,16 @@
 package com.proxy.interceptor.proxy;
 
+import com.proxy.interceptor.config.ProxyProperties;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
-
 @Component
+@RequiredArgsConstructor
 @Slf4j
 public class SqlClassifier {
 
-    @Value("${proxy.critical-keywords}")
-    private List<String> criticalKeywords;
-
-    @Value("${proxy.allowed-keywords}")
-    private List<String> allowedKeywords;
-
-    @Value("${proxy.block-by-default}")
-    private boolean blockedByDefault;
+    private final ProxyProperties proxyProperties;
 
     public Classification classify(String sql) {
         if (sql == null || sql.isBlank()) {
@@ -27,7 +20,7 @@ public class SqlClassifier {
         String upperSql = sql.toUpperCase();
 
         // Check critical keywords first (highest priority)
-        for (String keyword: criticalKeywords) {
+        for (String keyword: proxyProperties.getCriticalKeywords()) {
             if (upperSql.contains(keyword.toUpperCase())) {
                 log.debug("SQL classified as CRITICAL (matched: {})", keyword);
                 return Classification.CRITICAL;
@@ -35,7 +28,7 @@ public class SqlClassifier {
         }
 
         // Checked allowed keywords
-        for (String keywords : allowedKeywords) {
+        for (String keywords : proxyProperties.getAllowedKeywords()) {
             if (upperSql.contains(keywords.toUpperCase())) {
                 log.debug("SQL classified as ALLOWED (matched: {})", keywords);
                 return Classification.ALLOWED;
@@ -43,7 +36,7 @@ public class SqlClassifier {
         }
 
         // Default policy
-        return blockedByDefault ? Classification.CRITICAL : Classification.ALLOWED;
+        return proxyProperties.isBlockByDefault() ? Classification.CRITICAL : Classification.ALLOWED;
     }
 
     public boolean shouldBlock(String sql) {

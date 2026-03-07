@@ -60,6 +60,10 @@ proxy:
     server-key-store-password: ${PROXY_SERVER_KEY_STORE_PASSWORD}
 
 # Admin dashboard - HTTPS with TLSv1.3
+admin:
+  username: ${ADMIN_USERNAME}
+  password: ${ADMIN_PASSWORD}
+
 server:
   port: 443
   ssl:

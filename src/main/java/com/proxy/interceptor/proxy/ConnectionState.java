@@ -2,21 +2,23 @@ package com.proxy.interceptor.proxy;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.util.ArrayList;
 import java.util.List;
 
+@Getter
+@Setter
 public class ConnectionState {
 
-    public final String connId;
-
-    public volatile Channel serverChannel;
-    public volatile boolean inExtendedBatch = false;
-    public volatile boolean sslNegotiated = false;
-    public volatile boolean frontendSslDone = false;
-
-    public StringBuilder batchQuery = new StringBuilder();
-    public List<ByteBuf> batchBuffers = new ArrayList<>();
+    private final String connId;
+    private volatile Channel serverChannel;
+    private volatile boolean inExtendedBatch = false;
+    private volatile boolean sslNegotiated = false;
+    private volatile boolean frontendSslDone = false;
+    private StringBuilder batchQuery = new StringBuilder();
+    private final List<ByteBuf> batchBuffers = new ArrayList<>();
 
     public ConnectionState(String connId) {
         this.connId = connId;

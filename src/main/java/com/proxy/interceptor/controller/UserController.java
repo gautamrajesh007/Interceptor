@@ -9,6 +9,7 @@ import com.proxy.interceptor.service.AuditService;
 import com.proxy.interceptor.service.AuthService;
 import com.proxy.interceptor.service.UserService;
 import com.proxy.interceptor.util.RequestUtils;
+import jakarta.persistence.EntityNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +27,6 @@ import java.util.Map;
 public class UserController {
 
     private final UserService userService;
-    private final UserRepository userRepository;
     private final AuthService authService;
     private final AuditService auditService;
 
@@ -59,29 +59,17 @@ public class UserController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> deleteUser(
-            @PathVariable Long id,
-            HttpServletRequest httpRequest
-    ) {
-        var userOpt = userRepository.findById(id);
-        if (userOpt.isEmpty()) {
-            return ResponseEntity.status(404).body(Map.of("error", "User does not exist"));
+    public ResponseEntity<?> deleteUser(@PathVariable Long id, HttpServletRequest httpRequest) {
+        String adminUsername = RequestUtils.getUsername(httpRequest);
+        try {
+            userService.deleteUser(id, adminUsername);
+            auditService.log(adminUsername, "user_deleted", "Deleted user #" + id,
+                    RequestUtils.getClientIp(httpRequest));
+            return ResponseEntity.ok(Map.of("success", true));
+        } catch (EntityNotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
-
-        User user = userOpt.get();
-        String adminUsername = (String) httpRequest.getAttribute("username");
-
-        // Prevent self-deletion
-        if (user.getUsername().equals(adminUsername)) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Cannot delete yourself"));
-        }
-
-        userRepository.delete(user);
-
-        auditService.log(adminUsername, "user_deleted",
-                "Deleted user: " + user.getUsername(),
-                RequestUtils.getClientIp(httpRequest));
-
-        return ResponseEntity.ok(Map.of("success", true));
     }
 }

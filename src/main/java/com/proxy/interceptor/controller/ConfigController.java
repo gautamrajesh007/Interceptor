@@ -1,16 +1,16 @@
 package com.proxy.interceptor.controller;
 
+import com.proxy.interceptor.config.ApprovalProperties;
+import com.proxy.interceptor.config.ProxyProperties;
 import com.proxy.interceptor.service.AuditService;
 import com.proxy.interceptor.util.RequestUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -19,42 +19,20 @@ import java.util.Map;
 public class ConfigController {
 
     private final AuditService auditService;
-
-    @Value("${proxy.listen-port}")
-    private int proxyPort;
-
-    @Value("${proxy.target-host}")
-    private String targetHost;
-
-    @Value("${proxy.target-port}")
-    private int targetPort;
-
-    @Value("${proxy.block-by-default}")
-    private boolean blockByDefault;
-
-    @Value("${proxy.critical-keywords}")
-    private List<String> criticalKeywords;
-
-    @Value("${proxy.allowed-keywords}")
-    private List<String> allowedKeywords;
-
-    @Value("${approval.peer-enabled}")
-    private boolean peerApprovalEnabled;
-
-    @Value("${approval.min-votes}")
-    private int minVotes;
+    private final ProxyProperties proxyProperties;
+    private final ApprovalProperties approvalProperties;
 
     @GetMapping
     public ResponseEntity<Map<String, Object>> getConfig() {
         Map<String, Object> config = new HashMap<>();
-        config.put("proxy_port", proxyPort);
-        config.put("target_host", targetHost);
-        config.put("target_port", targetPort);
-        config.put("block_by_default", blockByDefault);
-        config.put("critical_keywords", String.join(", ", criticalKeywords));
-        config.put("allowed_keywords", String.join(", ", allowedKeywords));
-        config.put("peer_approval_enabled", peerApprovalEnabled);
-        config.put("peer_approval_min_votes", minVotes);
+        config.put("proxy_port", proxyProperties.getListenPort());
+        config.put("target_host", proxyProperties.getTargetHost());
+        config.put("target_port", proxyProperties.getTargetPort());
+        config.put("block_by_default", proxyProperties.isBlockByDefault());
+        config.put("critical_keywords", String.join(", ", proxyProperties.getCriticalKeywords()));
+        config.put("allowed_keywords", String.join(", ", proxyProperties.getAllowedKeywords()));
+        config.put("peer_approval_enabled", approvalProperties.isPeerEnabled());
+        config.put("peer_approval_min_votes", approvalProperties.getMinVotes());
         return ResponseEntity.ok(config);
     }
 
@@ -62,7 +40,8 @@ public class ConfigController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> updateConfig(
             @RequestBody Map<String, Object> newConfig,
-            HttpServletRequest request) {
+            HttpServletRequest request
+    ) {
 
         // Note: Not implemented. After review, we can use Spring Cloud Config for dynamic configuration.
         // For now, we just audit the attempt.

@@ -3,6 +3,7 @@ package com.proxy.interceptor;
 import com.proxy.interceptor.service.AuthService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -18,10 +19,13 @@ public class InterceptorApplication {
 	}
 
 	@Bean
-	CommandLineRunner initAdmin(AuthService authService) {
+	CommandLineRunner initAdmin(AuthService authService,
+								@Value("${admin.username}") String username,
+								@Value("${admin.password}") String password
+	) {
 		return args -> {
 			// Create default admin user if not exists
-			authService.createAdminIfNotExists("admin", "14495abc");
+			authService.createAdminIfNotExists(username, password);
 			log.info("	=========================================");
 			log.info("		Interceptor Proxy v2.0 Started");
 			log.info("	=========================================");

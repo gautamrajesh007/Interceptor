@@ -1,8 +1,5 @@
 package com.proxy.interceptor.proxy;
 
-import com.proxy.interceptor.config.SslContextFactory;
-import com.proxy.interceptor.service.BlockedQueryService;
-import com.proxy.interceptor.service.MetricsService;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
@@ -10,7 +7,6 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.ssl.SslHandler;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -18,196 +14,132 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 
     private final String connId;
     private final ConnectionState state;
-    private final String targetHost;
-    private final int targetPort;
-    private final SqlClassifier sqlClassifier;
-    private final WireProtocolHandler protocolHandler;
-    private final BlockedQueryService blockedQueryService;
-    private final MetricsService metricsService;
-    private final EventLoopGroupFactory eventLoopGroupFactory;
-    private final SslContextFactory sslContextFactory;
-    private volatile boolean backendReady = false;
+    private final ProxyContext ctx;
+    private volatile boolean backendReady;
     private Channel clientChannel;
-    private ConcurrentHashMap<String, ConnectionState> connections = new ConcurrentHashMap<>();
 
     public ClientHandler(String connId,
                          ConnectionState state,
-                         String targetHost,
-                         int targetPort,
-                         SqlClassifier sqlClassifier,
-                         WireProtocolHandler protocolHandler,
-                         BlockedQueryService blockedQueryService,
-                         MetricsService metricsService,
-                         EventLoopGroupFactory eventLoopGroupFactory,
-                         SslContextFactory sslContextFactory,
-                         Channel clientChannel,
-                         ConcurrentHashMap<String, ConnectionState> connections
-    ) {
+                         ProxyContext ctx,
+                         Channel clientChannel) {
         this.connId = connId;
         this.state = state;
-        this.targetHost = targetHost;
-        this.targetPort = targetPort;
-        this.sqlClassifier = sqlClassifier;
-        this.protocolHandler = protocolHandler;
-        this.blockedQueryService = blockedQueryService;
-        this.metricsService = metricsService;
-        this.eventLoopGroupFactory = eventLoopGroupFactory;
-        this.sslContextFactory = sslContextFactory;
-        this.backendReady = (sslContextFactory == null);
+        this.ctx = ctx;
         this.clientChannel = clientChannel;
-        this.connections = connections;
+        this.backendReady = (ctx.sslContextFactory() == null);
     }
 
-    /*
-    * Connection lifecycle
-     */
+    /** Connection lifecycle */
     @Override
-    public void channelActive(ChannelHandlerContext ctx) {
-        clientChannel = ctx.channel();
+    public void channelActive(ChannelHandlerContext nettyCtx) {
+        clientChannel = nettyCtx.channel();
 
         // Connect to the PostgreSQL db engine
         Bootstrap b = new Bootstrap();
-        b.group(ctx.channel().eventLoop())
-                .channel(eventLoopGroupFactory.getSocketChannelClass())
+        b.group(nettyCtx.channel().eventLoop())
+                .channel(ctx.eventLoopGroupFactory().getSocketChannelClass())
                 .option(ChannelOption.SO_KEEPALIVE, true)
                 .option(ChannelOption.TCP_NODELAY, true)
                 .handler(new ChannelInitializer<SocketChannel>() {
                     @Override
                     protected void initChannel(SocketChannel ch) {
-                        if (sslContextFactory != null) {
-                            // 1. Add a temporary handler to negotiate PostgreSQL SSL with the DB
-                            ch.pipeline().addLast(new ChannelInboundHandlerAdapter() {
-                                @Override
-                                public void channelActive(ChannelHandlerContext ctx) {
-                                    // Send PostgreSQL SSLRequest (8 bytes: length 8, magic code 80877103)
-                                    ByteBuf sslRequest = ctx.alloc().buffer(8);
-                                    sslRequest.writeInt(8);
-                                    sslRequest.writeInt(80877103);
-                                    ctx.writeAndFlush(sslRequest);
-                                }
-
-                                @Override
-                                public void channelRead(ChannelHandlerContext ctx, Object msg) {
-                                    ByteBuf buf = (ByteBuf) msg;
-                                    if (buf.readableBytes() > 0) {
-                                        byte response = buf.readByte();
-                                        if (response == 'S') {
-                                            // 2. DB agreed to SSL — install backend SslHandler (TLS B)
-                                            ctx.pipeline().addFirst(
-                                                    sslContextFactory.newBackendHandler(ctx.alloc(), targetHost, targetPort)
-                                            );
-                                            log.debug("{}: Upgraded backend connection to TLS (TLS B)", connId);
-                                        } else {
-                                            log.error("{}: PostgreSQL server rejected SSL request (responded with '{}')", connId, (char) response);
-                                        }
-
-                                        // 3. Remove this temporary startup handler as negotiation is done
-                                        ctx.pipeline().remove(this);
-
-                                        // 4: Signal the proxy that it is now safe to forward client data
-                                        backendReady = true;
-
-                                        // 5. Forward any remaining bytes in this buffer to the next handler
-                                        if (buf.isReadable()) {
-                                            ctx.fireChannelRead(buf);
-                                        } else {
-                                            buf.release();
-                                        }
-                                    }
-                                }
-                            });
+                        if (ctx.sslContextFactory() != null) {
+                            ch.pipeline().addLast(new BackendSslNegotiationHandler(
+                                    connId,
+                                    ctx.sslContextFactory(),
+                                    ctx.targetHost(),
+                                    ctx.targetPort(),
+                                    () -> backendReady = true
+                            ));
                         }
 
-                        // Add your standard server handler
-                        ch.pipeline().addLast(new ServerHandler(connId, clientChannel, metricsService));
+                        // Add the standard server handler
+                        ch.pipeline().addLast(new ServerHandler(connId, clientChannel, ctx.metricsService()));
                     }
                 });
 
-        b.connect(targetHost, targetPort).addListener((ChannelFutureListener) future -> {
+        b.connect(ctx.targetHost(), ctx.targetPort()).addListener((ChannelFutureListener) future -> {
             if (future.isSuccess()) {
-                state.serverChannel = future.channel();
+                state.setServerChannel(future.channel());
                 log.debug("{}: Connected to PostgreSQL db engine", connId);
             } else {
                 log.error("{}: Failed to connect to PostgreSQL", connId);
-                metricsService.trackError();
-                sendErrorToClient(ctx, "Failed to connect to db engine");
-                ctx.close();
+                ctx.metricsService().trackError();
+                sendErrorToClient(nettyCtx, "Failed to connect to db engine");
+                nettyCtx.close();
             }
         });
     }
 
     @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) {
+    public void channelRead(ChannelHandlerContext nettyCtx, Object msg) {
         ByteBuf buf = (ByteBuf) msg;
 
         try {
-            // ────────────────────── Frontend TLS Negotiation (TLS A) ──────────────────────
+            // -------------------- Frontend TLS Negotiation (TLS A) --------------------
             // Handle PostgreSQL SSLRequest from the client (psql, DataGrip, etc.)
-            if (!state.sslNegotiated && buf.readableBytes() == 8) {
+            if (!state.isSslNegotiated() && buf.readableBytes() == 8) {
                 int readerIndex = buf.readerIndex();
                 int length = buf.getInt(readerIndex);
                 int code = buf.getInt(readerIndex + 4);
 
                 // SSLRequest: length=8, code=80877103
                 if (length == 8 && code == 80877103) {
-                    if (sslContextFactory != null) {
+                    if (ctx.sslContextFactory() != null) {
                         log.debug("{}: Received SSLRequest from client, responding 'S' (frontend TLS enabled)", connId);
 
                         // 1. Respond with 'S' — we accept SSL
-                        ByteBuf response = ctx.alloc().buffer(1);
+                        ByteBuf response = nettyCtx.alloc().buffer(1);
                         response.writeByte('S');
-                        ctx.writeAndFlush(response).addListener((ChannelFutureListener) writeFuture -> {
+                        nettyCtx.writeAndFlush(response).addListener((ChannelFutureListener) writeFuture -> {
                             if (writeFuture.isSuccess()) {
                                 // 2. Install SslHandler at the front of the pipeline (TLS A)
-                                SslHandler sslHandler = sslContextFactory.newFrontendHandler(ctx.alloc());
-                                ctx.pipeline().addFirst("frontendSsl", sslHandler);
+                                SslHandler sslHandler = ctx.sslContextFactory().newFrontendHandler(nettyCtx.alloc());
+                                nettyCtx.pipeline().addFirst("frontendSsl", sslHandler);
 
                                 // 3. Wait for TLS handshake to complete before processing more data
                                 sslHandler.handshakeFuture().addListener(handshakeFuture -> {
                                     if (handshakeFuture.isSuccess()) {
                                         log.info("{}: Frontend TLS handshake completed (TLS A)", connId);
-                                        state.frontendSslDone = true;
+                                        state.setFrontendSslDone(true);
                                     } else {
                                         log.error("{}: Frontend TLS handshake failed: {}", connId,
                                                 handshakeFuture.cause().getMessage());
-                                        ctx.close();
+                                        nettyCtx.close();
                                     }
                                 });
                             } else {
                                 log.error("{}: Failed to send 'S' response to client", connId);
-                                ctx.close();
+                                nettyCtx.close();
                             }
                         });
                     } else {
                         // SSL not configured — reject SSL negotiation
                         log.debug("{}: Received SSLRequest from client, responding 'N' (SSL not configured)", connId);
-                        ByteBuf response = ctx.alloc().buffer(1);
+                        ByteBuf response = nettyCtx.alloc().buffer(1);
                         response.writeByte('N');
-                        ctx.writeAndFlush(response);
+                        nettyCtx.writeAndFlush(response);
                     }
 
-                    state.sslNegotiated = true;
+                    state.setSslNegotiated(true);
                     return;
                 }
             }
 
             // Wait for server connection to be established
-            if (state.serverChannel == null || !state.serverChannel.isActive() || !backendReady) {
+            if (state.getServerChannel() == null || !state.getServerChannel().isActive() || !backendReady) {
                 log.debug("{}: Server not connected yet, buffering message", connId);
-                scheduleForward(ctx, buf.retain());
+                scheduleForward(nettyCtx, buf.retain());
                 return;
             }
-            processClientMessage(ctx, buf);
+            processClientMessage(nettyCtx, buf);
         } finally {
             buf.release();
         }
     }
 
-    /*
-    * Message Processing
-     */
-
-    private void processClientMessage(ChannelHandlerContext ctx, ByteBuf buf) {
+    /** Message Processing */
+    private void processClientMessage(ChannelHandlerContext nettyCtx, ByteBuf buf) {
         if (buf.readableBytes() < 1) {
             forwardToServer(buf.retain());
             return;
@@ -216,34 +148,32 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
         byte messageType = buf.getByte(buf.readerIndex());
 
         switch (messageType) {
-            case 'Q' -> handleSimpleQuery(ctx, buf);
+            case 'Q' -> handleSimpleQuery(nettyCtx, buf);
             case 'P' -> handleParseMessage(buf);
-            case 'S' -> handleSyncMessage(ctx, buf);
+            case 'S' -> handleSyncMessage(nettyCtx, buf);
             case 'B', 'D', 'E' -> handleExtendedProtocolMessage(buf);
             default -> forwardToServer(buf.retain());
         }
     }
 
-    /*
-    * Simple Query
-     */
-    private void handleSimpleQuery(ChannelHandlerContext ctx, ByteBuf buf) {
-        var simpleQuery = protocolHandler.parseSimpleQuery(buf.duplicate());
+    /** Simple Query */
+    private void handleSimpleQuery(ChannelHandlerContext nettyCtx, ByteBuf buf) {
+        var simpleQuery = ctx.protocolHandler().parseSimpleQuery(buf.duplicate());
         if (simpleQuery.isPresent()) {
             String sql = simpleQuery.get();
-            metricsService.trackQuery("SIMPLE");
+            ctx.metricsService().trackQuery("SIMPLE");
 
-            if (sqlClassifier.shouldBlock(sql)) {
+            if (ctx.sqlClassifier().shouldBlock(sql)) {
                 log.info("{}: 🚫BLOCKED Simple Query: {}", connId, truncate(sql));
-                metricsService.trackBlocked();
+                ctx.metricsService().trackBlocked();
 
-                blockedQueryService.addBlockedQuery(
+                ctx.blockedQueryService().addBlockedQuery(
                         connId,
                         "SIMPLE",
                         sql,
                         buf.retainedDuplicate(),
                         this::forwardToServer,
-                        error -> sendErrorToClient(ctx, error)
+                        error -> sendErrorToClient(nettyCtx, error)
                 );
                 return;
             }
@@ -251,19 +181,17 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
         forwardToServer(buf.retain());
     }
 
-    /*
-    * Extended Query
-     */
+    /** Extended Query */
     private void handleParseMessage(ByteBuf buf) {
-        var extendedQuery = protocolHandler.parseExtendedQuery(buf.duplicate());
+        var extendedQuery = ctx.protocolHandler().parseExtendedQuery(buf.duplicate());
         if (extendedQuery.isPresent()) {
             String sql = extendedQuery.get();
 
-            if (sqlClassifier.shouldBlock(sql)) {
+            if (ctx.sqlClassifier().shouldBlock(sql)) {
                 log.debug("{}: Starting blocked extended batch", connId);
-                state.inExtendedBatch = true;
-                state.batchQuery = new StringBuilder(sql);
-                state.batchBuffers.add(buf.retainedDuplicate());
+                state.setInExtendedBatch(true);
+                state.setBatchQuery(new StringBuilder(sql));
+                state.getBatchBuffers().add(buf.retainedDuplicate());
                 return;
             }
         }
@@ -271,107 +199,101 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void handleExtendedProtocolMessage(ByteBuf buf) {
-        if (state.inExtendedBatch) {
-            state.batchBuffers.add(buf.retainedDuplicate());
+        if (state.isInExtendedBatch()) {
+            state.getBatchBuffers().add(buf.retainedDuplicate());
         } else {
             forwardToServer(buf.retain());
         }
     }
 
-    private void handleSyncMessage(ChannelHandlerContext ctx, ByteBuf buf) {
-        if (!state.inExtendedBatch) {
+    private void handleSyncMessage(ChannelHandlerContext nettyCtx, ByteBuf buf) {
+        if (!state.isInExtendedBatch()) {
             forwardToServer(buf.retain());
             return;
         }
 
-        state.batchBuffers.add(buf.retainedDuplicate());
-        String sql = state.batchQuery.toString();
+        state.getBatchBuffers().add(buf.retainedDuplicate());
+        String sql = state.getBatchQuery().toString();
 
         log.info("{}: 🚫BLOCKED Extended Query: {}", connId, truncate(sql));
-        metricsService.trackQuery("EXTENDED");
-        metricsService.trackBlocked();
+        ctx.metricsService().trackQuery("EXTENDED");
+        ctx.metricsService().trackBlocked();
 
-        ByteBuf combinedBuf = ctx.alloc().compositeBuffer()
-                .addComponents(true, state.batchBuffers.toArray(new ByteBuf[0]));
+        ByteBuf combinedBuf = nettyCtx.alloc().compositeBuffer()
+                .addComponents(true, state.getBatchBuffers().toArray(new ByteBuf[0]));
 
-        state.inExtendedBatch = false;
-        state.batchQuery = new StringBuilder();
-        state.batchBuffers.clear();
+        state.setInExtendedBatch(false);
+        state.setBatchQuery(new StringBuilder());
+        state.getBatchBuffers().clear();
 
-        blockedQueryService.addBlockedQuery(
+        ctx.blockedQueryService().addBlockedQuery(
                 connId,
                 "EXTENDED",
                 sql,
                 combinedBuf,
                 this::forwardToServer,
-                error -> sendErrorToClient(ctx, error)
+                error -> sendErrorToClient(nettyCtx, error)
         );
     }
 
-    /*
-    * Forwarding helpers
-     */
+    /** Forwarding helpers */
     private void forwardToServer(ByteBuf buf) {
-        if (state.serverChannel != null && state.serverChannel.isActive()) {
-            state.serverChannel.writeAndFlush(buf);
+        if (state.getServerChannel() != null && state.getServerChannel().isActive()) {
+            state.getServerChannel().writeAndFlush(buf);
         } else {
             buf.release(); // prevent leak if server not available
             log.warn("{}: Cannot forward - server channel inactive", connId);
         }
     }
 
-    private void scheduleForward(ChannelHandlerContext ctx, ByteBuf buf) {
-        ctx.channel().eventLoop().schedule(() -> {
-            if (state.serverChannel != null && state.serverChannel.isActive() && backendReady) {
+    private void scheduleForward(ChannelHandlerContext nettyCtx, ByteBuf buf) {
+        nettyCtx.channel().eventLoop().schedule(() -> {
+            if (state.getServerChannel() != null && state.getServerChannel().isActive() && backendReady) {
                 try {
-                    processClientMessage(ctx, buf);
+                    processClientMessage(nettyCtx, buf);
                 } finally {
                     buf.release();
                 }
-            } else if (ctx.channel().isActive()) {
-                scheduleForward(ctx, buf);
+            } else if (nettyCtx.channel().isActive()) {
+                scheduleForward(nettyCtx, buf);
             } else {
                 buf.release();
             }
         }, 10, TimeUnit.MILLISECONDS);
     }
 
-    private void sendErrorToClient(ChannelHandlerContext ctx, String message) {
-        if (!ctx.channel().isActive()) return;
+    private void sendErrorToClient(ChannelHandlerContext nettyCtx, String message) {
+        if (!nettyCtx.channel().isActive()) return;
 
-        ByteBuf error = protocolHandler.createErrorResponse(message);
-        ByteBuf ready = protocolHandler.createReadyForQuery();
-        ctx.write(error);
-        ctx.writeAndFlush(ready);
+        ByteBuf error = ctx.protocolHandler().createErrorResponse(message);
+        ByteBuf ready = ctx.protocolHandler().createReadyForQuery();
+        nettyCtx.write(error);
+        nettyCtx.writeAndFlush(ready);
     }
 
-    /*
-    * Cleanup
-     */
+    /** Cleanup */
     @Override
-    public void channelInactive(ChannelHandlerContext ctx) {
+    public void channelInactive(ChannelHandlerContext nettyCtx) {
         log.info("{}: Client disconnected", connId);
-        connections.remove(connId);
-        metricsService.trackDisconnection();
-        blockedQueryService.cleanupConnection(connId);
+        ctx.connections().remove(connId);
+        ctx.metricsService().trackDisconnection();
+        ctx.blockedQueryService().cleanupConnection(connId);
         state.resetBatch();
 
-        if (state.serverChannel != null) {
-            state.serverChannel.close();
+        if (state.getServerChannel() != null) {
+            state.getServerChannel().close();
         }
     }
 
     @Override
-    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+    public void exceptionCaught(ChannelHandlerContext nettyCtx, Throwable cause) {
         log.error("{}: Client error: {}", connId, cause.getMessage());
-        metricsService.trackError();
+        ctx.metricsService().trackError();
         state.resetBatch();
-        ctx.close();
+        nettyCtx.close();
     }
 
-    /*
-    * Utilities
-     */
+    /** Utilities */
     private String truncate(String s) {
         return s.length() > 100 ? s.substring(0, 100) + "..." : s;
     }
