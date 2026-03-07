@@ -2,12 +2,12 @@ package com.proxy.interceptor.service;
 
 import com.proxy.interceptor.config.ApprovalProperties;
 import com.proxy.interceptor.dto.PendingQuery;
+import com.proxy.interceptor.messaging.QueryEventPublisher;
 import com.proxy.interceptor.model.*;
 import com.proxy.interceptor.repository.BlockedQueryRepository;
 import io.netty.buffer.ByteBuf;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,7 +25,7 @@ import java.util.function.Consumer;
 public class BlockedQueryService {
 
     private final BlockedQueryRepository blockedQueryRepository;
-    private final RedisTemplate<String, Object> redisTemplate;
+    private final QueryEventPublisher queryEventPublisher;
     private final AuditService auditService;
     private final ApprovalProperties approvalProperties;
 
@@ -67,7 +67,7 @@ public class BlockedQueryService {
         pendingQueries.put(query.getId(), pending);
 
         // Publish notification to Redis for real-time updates
-        publishBlockedNotification(query);
+        queryEventPublisher.publishBlocked(query);
 
         log.info("Blocked query #{} from {}: {}", query.getId(), connId, sql.substring(0, Math.min(50, sql.length())));
     }
@@ -101,7 +101,7 @@ public class BlockedQueryService {
                 String.format("Query $%d approved: %s", id, query.getQueryPreview()), null);
 
         // Publish approval notification
-        publishApprovalNotification(query, "APPROVED", approvedBy);
+        queryEventPublisher.publishApproval(query, "APPROVED", approvedBy);
 
         log.info("Query #{} approved by {}", id, approvedBy);
         return true;
@@ -137,7 +137,7 @@ public class BlockedQueryService {
                 String.format("Query #%d rejected: %s", id, query.getQueryPreview()), null);
 
         // Publish rejection notification
-        publishApprovalNotification(query, "REJECTED", rejectedBy);
+        queryEventPublisher.publishApproval(query, "REJECTED", rejectedBy);
 
         log.info("Query #{} rejected by {}", id, rejectedBy);
         return true;
@@ -225,7 +225,7 @@ public class BlockedQueryService {
         }
 
         // Publish vote notification
-        publishVoteNotification(id, username, vote, pending.approvals().size(), pending.rejections().size());
+        queryEventPublisher.publishVote(id, username, vote);
 
         return Map.of(
                 "success", true,
@@ -268,50 +268,5 @@ public class BlockedQueryService {
                 "approvalCount", pending.approvals().size(),
                 "rejectionCount", pending.rejections().size()
         );
-    }
-
-    private void publishBlockedNotification(BlockedQuery query) {
-        try {
-            redisTemplate.convertAndSend("interceptor:blocked", Map.of(
-                    "type", "Blocked",
-                    "queryId", query.getId(),
-                    "connId", query.getConnId(),
-                    "queryType", query.getQueryType().name(),
-                    "preview", query.getQueryPreview().substring(0, Math.min(200, query.getQueryPreview().length())),
-                    "requiresPeerApproval", query.isRequiresPeerApproval(),
-                    "timestamp", Instant.now().toString()
-            ));
-        } catch (Exception e) {
-            log.error("Failed to publish blocked notification: {}", e.getMessage());
-        }
-    }
-
-    private void publishApprovalNotification(BlockedQuery query, String action, String resolveBy) {
-        try {
-            redisTemplate.convertAndSend("interceptor:approvals", Map.of(
-                    "type", action,
-                    "queryId", query.getId(),
-                    "resolvedBy", resolveBy,
-                    "timestamp", Instant.now().toString()
-            ));
-        } catch (Exception e) {
-            log.error("Failed to publish approval notification: {}", e.getMessage());
-        }
-    }
-
-    private void publishVoteNotification(Long queryId, String username, String vote, int approvals, int rejections) {
-        try {
-            redisTemplate.convertAndSend("interceptor:votes", Map.of(
-                    "type", "VOTE",
-                    "queryId", queryId,
-                    "username", username,
-                    "vote", vote,
-                    "approvalCount", approvals,
-                    "rejectionCount", rejections,
-                    "timestamp", Instant.now().toString()
-            ));
-        } catch (Exception e) {
-            log.error("Failed to publish vote notification: {}", e.getMessage());
-        }
     }
 }
