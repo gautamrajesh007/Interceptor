@@ -1,4 +1,4 @@
-package com.proxy.interceptor.config;
+package com.proxy.interceptor.messaging;
 
 import com.proxy.interceptor.service.WebSocketNotificationService;
 import lombok.RequiredArgsConstructor;
