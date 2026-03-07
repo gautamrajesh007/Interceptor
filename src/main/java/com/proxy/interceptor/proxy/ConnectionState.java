@@ -13,6 +13,7 @@ public class ConnectionState {
     public volatile Channel serverChannel;
     public volatile boolean inExtendedBatch = false;
     public volatile boolean sslNegotiated = false;
+    public volatile boolean frontendSslDone = false;
 
     public StringBuilder batchQuery = new StringBuilder();
     public List<ByteBuf> batchBuffers = new ArrayList<>();
