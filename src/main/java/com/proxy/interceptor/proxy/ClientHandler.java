@@ -1,8 +1,5 @@
 package com.proxy.interceptor.proxy;
 
-import com.proxy.interceptor.config.SslContextFactory;
-import com.proxy.interceptor.service.BlockedQueryService;
-import com.proxy.interceptor.service.MetricsService;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
@@ -10,7 +7,6 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.ssl.SslHandler;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
