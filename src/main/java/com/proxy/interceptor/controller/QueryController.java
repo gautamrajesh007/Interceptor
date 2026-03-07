@@ -52,23 +52,15 @@ public class QueryController {
         String username = (String) httpRequest.getAttribute("username");
         String clientIp = RequestUtils.getClientIp(httpRequest);
 
-        // Replay protection
-        if (request.nonce() != null && request.timestamp() != null) {
-            if (!replayProtectionService.validateRequest(
-                    request.nonce(), request.timestamp(),
-                    "approve:" + request.id(), username
-            )) {
-                auditService.log(username, "replay_attack_blocked",
-                        "Attempted replay on approve for query #" + request.id(), clientIp);
-                return ResponseEntity.status(403).body(Map.of("error", "Replay attack detected"));
-            }
-        }
+        // Extracted Replay Protection
+        ResponseEntity<?> replayError = validateReplay(request, "approve", username, clientIp);
+        if (replayError != null) return replayError;
 
         boolean ok = blockedQueryService.approveQuery(request.id(), username);
 
         if (ok) {
             auditService.log(username, "query_approved",
-                    "Query #" + request.id() + "approved", clientIp);
+                    "Query #" + request.id() + " approved", clientIp);
         }
 
         return ResponseEntity.ok(Map.of("success", ok));
@@ -82,23 +74,15 @@ public class QueryController {
         String username = (String) httpRequest.getAttribute("username");
         String clientIp = RequestUtils.getClientIp(httpRequest);
 
-        // Replay protection
-        if (request.nonce() != null && request.timestamp() != null) {
-            if (!replayProtectionService.validateRequest(
-                    request.nonce(), request.timestamp(),
-                    "approve:" + request.id(), username
-            )) {
-                auditService.log(username, "replay_attack_blocked",
-                        "Attempted replay on approve for query #" + request.id(), clientIp);
-                return ResponseEntity.status(403).body(Map.of("error", "Replay attack detected"));
-            }
-        }
+        // Extracted Replay Protection
+        ResponseEntity<?> replayError = validateReplay(request, "reject", username, clientIp);
+        if (replayError != null) return replayError;
 
         boolean ok = blockedQueryService.rejectQuery(request.id(), username);
 
         if (ok) {
             auditService.log(username, "query_rejected",
-                    "Query #" + request.id() + "rejected", clientIp);
+                    "Query #" + request.id() + " rejected", clientIp);
         }
 
         return ResponseEntity.ok(Map.of("success", ok));
@@ -112,14 +96,9 @@ public class QueryController {
         String username = (String) httpRequest.getAttribute("username");
         String clientIp = RequestUtils.getClientIp(httpRequest);
 
-        // Replay protection
-        if (request.nonce() != null && request.timestamp() != null) {
-            if (!replayProtectionService.validateRequest(
-                    request.nonce(), request.timestamp(),
-                    "vote:" + request.id() + ":" + request.vote(), username)) {
-                return ResponseEntity.status(403).body(Map.of("error", "Replay attack detected"));
-            }
-        }
+        // Extracted Replay Protection for Voting
+        ResponseEntity<?> replayError = validateVoteReplay(request, username, clientIp);
+        if (replayError != null) return replayError;
 
         Map<String, Object> result = blockedQueryService.addVote(request.id(), username, request.vote());
 
@@ -130,5 +109,38 @@ public class QueryController {
             String.format("Vote %s on query #%d", request.vote(), request.id()), clientIp);
 
         return ResponseEntity.ok(result);
+    }
+
+    /** Helper Methods for Replay Protection Deduplication */
+
+    private ResponseEntity<?> validateReplay(ApprovalRequest request,
+                                             String action,
+                                             String username,
+                                             String clientIp) {
+        if (request.nonce() != null && request.timestamp() != null) {
+            if (!replayProtectionService.validateRequest(
+                    request.nonce(), request.timestamp(),
+                    action + ":" + request.id(), username)) {
+                auditService.log(username, "replay_attack_blocked",
+                        "Attempted replay on " + action + " for query #" + request.id(), clientIp);
+                return ResponseEntity.status(403).body(Map.of("error", "Replay attack detected"));
+            }
+        }
+        return null; // Valid
+    }
+
+    private ResponseEntity<?> validateVoteReplay(VoteRequest request,
+                                                 String username,
+                                                 String clientIp) {
+        if (request.nonce() != null && request.timestamp() != null) {
+            if (!replayProtectionService.validateRequest(
+                    request.nonce(), request.timestamp(),
+                    "vote:" + request.id() + ":" + request.vote(), username)) {
+                auditService.log(username, "replay_attack_blocked",
+                        "Attempted replay on vote for query #" + request.id(), clientIp);
+                return ResponseEntity.status(403).body(Map.of("error", "Replay attack detected"));
+            }
+        }
+        return null; // Valid
     }
 }
