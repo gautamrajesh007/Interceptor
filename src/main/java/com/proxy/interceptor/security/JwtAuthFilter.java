@@ -1,5 +1,6 @@
 package com.proxy.interceptor.security;
 
+import com.proxy.interceptor.dto.TokenClaims;
 import com.proxy.interceptor.model.User;
 import com.proxy.interceptor.repository.UserRepository;
 import jakarta.servlet.FilterChain;
@@ -39,9 +40,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             String token = authHeader.substring(7);
 
             if (jwtTokenProvider.validateToken(token)) {
-                String username = jwtTokenProvider.getUsernameFromToken(token);
-                String role = jwtTokenProvider.getRoleFromToken(token);
-                Integer tokenVersion = jwtTokenProvider.getTokenVersionFromToken(token);
+                TokenClaims claims = jwtTokenProvider.parseToken(token);
+                String username = claims.username();
+                String role = claims.role();
+                Integer tokenVersion = claims.tokenVersion();
 
                 Optional<User> userOpt = userRepository.findByUsername(username);
 
