@@ -1,5 +1,6 @@
 package com.proxy.interceptor.security;
 
+import com.proxy.interceptor.dto.TokenClaims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -41,6 +42,20 @@ public class JwtTokenProvider {
                 .expiration(expiryDate)
                 .signWith(key)
                 .compact();
+    }
+
+    public TokenClaims parseToken(String token) {
+        var payload = Jwts.parser()
+                .verifyWith(key)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+
+        return new TokenClaims(
+                payload.getSubject(),
+                payload.get("role", String.class),
+                payload.get("token_version", Integer.class)
+        );
     }
 
     public String getUsernameFromToken(String token) {
