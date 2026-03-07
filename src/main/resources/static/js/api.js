@@ -94,12 +94,25 @@ const API = (() => {
 
     if (!res.ok) {
       const data = await res.json().catch(() => ({ error: res.statusText }));
+      // If the backend returned an ApiResponse error format, unwrap it
+      if (data && typeof data.success === "boolean" && data.error) {
+        throw { status: res.status, error: data.error };
+      }
       throw { status: res.status, ...data };
     }
 
-    // Some endpoints may return empty body
     const text = await res.text();
-    return text ? JSON.parse(text) : {};
+    const parsed = text ? JSON.parse(text) : {};
+
+    // Auto-unwrap ApiResponse standard format
+    if (parsed && typeof parsed.success === "boolean" && ('data' in parsed || 'error' in parsed)) {
+      if (!parsed.success) {
+        throw { status: res.status, error: parsed.error || "Unknown API error" };
+      }
+      return parsed.data !== null && parsed.data !== undefined ? parsed.data : {};
+    }
+
+    return parsed;
   }
 
   // ─── Auth Endpoints ───
