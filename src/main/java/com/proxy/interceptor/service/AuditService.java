@@ -55,11 +55,6 @@ public class AuditService {
         return auditLogRepository.findByUsernameOrderByTimestampDesc(username);
     }
 
-    // Check if request hash already exists (for replay protection)
-    public boolean isReplayedRequest(String requestHash) {
-        return auditLogRepository.findByRequestHash(requestHash).isPresent();
-    }
-
     // Cleanup old audit logs
     @Scheduled(cron = "0 0 2 * * ? ") // Run at 2 AM daily
     @Transactional
