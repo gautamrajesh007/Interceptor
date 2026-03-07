@@ -1,6 +1,7 @@
 package com.proxy.interceptor.controller;
 
 import com.proxy.interceptor.service.AuditService;
+import com.proxy.interceptor.util.RequestUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -68,19 +69,11 @@ public class ConfigController {
 
         String username = (String) request.getAttribute("username");
         auditService.log(username, "config_update_attempted",
-            "Configuration update requested (requires restart)", getClientIp(request));
+            "Configuration update requested (requires restart)", RequestUtils.getClientIp(request));
 
         return ResponseEntity.ok(Map.of(
             "ok", true,
             "message", "Configuration saved.  Restart required to apply changes."
         ));
-    }
-
-    private String getClientIp(HttpServletRequest request) {
-        String xForwardedFor = request.getHeader("X-Forwarded-For");
-        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-            return xForwardedFor.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
     }
 }

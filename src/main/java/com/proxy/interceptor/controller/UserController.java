@@ -8,6 +8,7 @@ import com.proxy.interceptor.repository.UserRepository;
 import com.proxy.interceptor.service.AuditService;
 import com.proxy.interceptor.service.AuthService;
 import com.proxy.interceptor.service.UserService;
+import com.proxy.interceptor.util.RequestUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -46,7 +47,7 @@ public class UserController {
             String adminUsername = (String) httpRequest.getAttribute("username");
             auditService.log(adminUsername, "user_created",
                     "Created user: " + request.username() + " with role: " + role,
-                    getClientIp(httpRequest));
+                    RequestUtils.getClientIp(httpRequest));
 
             return ResponseEntity.ok(userService.mapToResponse(user));
         } catch (IllegalArgumentException e) {
@@ -79,16 +80,8 @@ public class UserController {
 
         auditService.log(adminUsername, "user_deleted",
                 "Deleted user: " + user.getUsername(),
-                getClientIp(httpRequest));
+                RequestUtils.getClientIp(httpRequest));
 
         return ResponseEntity.ok(Map.of("success", true));
-    }
-
-    private String getClientIp(HttpServletRequest request) {
-        String xForwardedFor = request.getHeader("X-Forwarded-For");
-        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-            return xForwardedFor.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
     }
 }
