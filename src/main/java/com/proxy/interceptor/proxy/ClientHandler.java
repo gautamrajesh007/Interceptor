@@ -7,6 +7,7 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.ssl.SslHandler;
 import lombok.extern.slf4j.Slf4j;
 
+import java.net.InetSocketAddress;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -33,6 +34,12 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelActive(ChannelHandlerContext nettyCtx) {
         clientChannel = nettyCtx.channel();
+
+        // Capture and store the PostgreSQL client's IP address
+        if (nettyCtx.channel().remoteAddress() instanceof InetSocketAddress socketAddress) {
+            state.setClientIp(socketAddress.getAddress().getHostAddress());
+            log.debug("{}: Client connected from IP: {}", connId, state.getClientIp());
+        }
 
         // Connect to the PostgreSQL db engine
         Bootstrap b = new Bootstrap();

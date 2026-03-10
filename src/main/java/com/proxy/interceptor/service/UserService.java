@@ -1,10 +1,12 @@
 package com.proxy.interceptor.service;
 
 import com.proxy.interceptor.dto.UserResponse;
+import com.proxy.interceptor.model.Role;
 import com.proxy.interceptor.model.User;
 import com.proxy.interceptor.repository.UserRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -12,6 +14,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class UserService {
 
     private final UserRepository userRepository;
@@ -32,6 +35,13 @@ public class UserService {
         }
 
         userRepository.delete(user);
+    }
+
+    /**
+     * Returns the total number of users eligible to vote.
+     */
+    public int getTotalPeerReviewers() {
+        return (int) userRepository.countByRole(Role.PEER);
     }
 
     public UserResponse mapToResponse(User user) {
