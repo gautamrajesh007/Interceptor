@@ -13,6 +13,7 @@ import java.util.List;
 public class ConnectionState {
 
     private final String connId;
+    private volatile String clientIp = "UNKNOWN";
     private volatile Channel serverChannel;
     private volatile boolean inExtendedBatch = false;
     private volatile boolean sslNegotiated = false;
