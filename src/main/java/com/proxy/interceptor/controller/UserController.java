@@ -12,6 +12,7 @@ import com.proxy.interceptor.util.RequestUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -23,6 +24,7 @@ import java.util.Map;
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('ADMIN')")
+@Slf4j
 public class UserController {
 
     private final UserService userService;
@@ -31,6 +33,7 @@ public class UserController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<UserResponse>>> getAllUsers() {
+        log.info("Total number of PEERS = {}", userService.getTotalPeerReviewers());
         return ResponseEntity.ok(ApiResponse.ok(userService.getAllUsers()));
     }
 
