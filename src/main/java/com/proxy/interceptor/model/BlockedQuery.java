@@ -54,6 +54,20 @@ public class BlockedQuery {
     @Builder.Default
     private boolean requiresPeerApproval = false;
 
+    /**
+     * The dynamically computed number of approvals required,
+     * calculated by DRS at interception time. Replaces static minVotes.
+     */
+    @Column(nullable = false)
+    @Builder.Default
+    private int requiredApprovals = 1;
+
+    /**
+     * The computed risk score R ∈ [0.0, 1.0] for audit/dashboard visibility.
+     */
+    @Column
+    private Double riskScore;
+
     // Nonce for replay attack protection (Phase 2)
     @Column(unique = true)
     private String nonce;
