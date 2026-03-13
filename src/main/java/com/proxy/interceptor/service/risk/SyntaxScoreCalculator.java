@@ -9,7 +9,9 @@ import net.sf.jsqlparser.statement.Statement;
 import net.sf.jsqlparser.statement.delete.Delete;
 import net.sf.jsqlparser.statement.drop.Drop;
 import net.sf.jsqlparser.statement.insert.Insert;
-import net.sf.jsqlparser.statement.select.*;
+import net.sf.jsqlparser.statement.select.ParenthesedSelect;
+import net.sf.jsqlparser.statement.select.PlainSelect;
+import net.sf.jsqlparser.statement.select.Select;
 import net.sf.jsqlparser.statement.truncate.Truncate;
 import net.sf.jsqlparser.statement.update.Update;
 import org.springframework.stereotype.Component;
@@ -180,7 +182,7 @@ public class SyntaxScoreCalculator {
         int joins = countOccurrences(upper, "JOIN");
         score += joins * properties.getJoinCoefficient();
 
-        // Count subquery depth (nested SELECTs)
+        // Count subquery depth (nested SELECT)
         int selects = countOccurrences(upper, "SELECT");
         if (selects > 1) {
             score += (selects - 1) * properties.getDepthCoefficient();
