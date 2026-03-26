@@ -39,6 +39,7 @@ public class BlockedQueryService {
 
     @Transactional
     public void addBlockedQuery(String connId,
+                                String clientIp,
                                 String queryType,
                                 String sql,
                                 ByteBuf originalMessage,
@@ -54,8 +55,8 @@ public class BlockedQueryService {
 
         if (riskScoringProperties.isEnabled()) {
             // Evaluate query risk dynamically
-            // IP is not available at the proxy layer; pass connId context
-            RiskAssessment riskAssessment = dynamicRiskService.evaluateQuery(sql, connId, "0.0.0.0");
+            // Pass the actual clientIp down to the DRS engine
+            RiskAssessment riskAssessment = dynamicRiskService.evaluateQuery(sql, connId, clientIp);
             requiredApprovals = riskAssessment.requiredApprovals();
             riskScore = riskAssessment.riskScore();
 
