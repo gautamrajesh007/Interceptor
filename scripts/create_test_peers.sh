@@ -6,6 +6,8 @@ ADMIN_TOKEN=$(curl -k -s -X POST https://localhost/api/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"14495abc"}' | grep -o '"token":"[^"]*' | cut -d'"' -f4)
 
+echo "Admin token: $ADMIN_TOKEN"
+
 if [[ -z "$ADMIN_TOKEN" ]]; then
     echo "❌ Failed to get Admin token. Is the server running?"
     exit 1
