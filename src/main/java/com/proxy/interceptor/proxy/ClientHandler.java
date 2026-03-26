@@ -176,6 +176,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 
                 ctx.blockedQueryService().addBlockedQuery(
                         connId,
+                        state.getClientIp(),
                         "SIMPLE",
                         sql,
                         buf.retainedDuplicate(),
@@ -235,6 +236,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 
         ctx.blockedQueryService().addBlockedQuery(
                 connId,
+                state.getClientIp(),
                 "EXTENDED",
                 sql,
                 combinedBuf,
