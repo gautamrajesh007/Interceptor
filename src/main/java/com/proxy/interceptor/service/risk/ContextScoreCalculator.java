@@ -1,6 +1,7 @@
 package com.proxy.interceptor.service.risk;
 
 import com.proxy.interceptor.config.RiskScoringProperties;
+import com.proxy.interceptor.util.NetworkUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -73,6 +74,12 @@ public class ContextScoreCalculator {
 
         // Localhost
         if (ipAddress.equals("127.0.0.1") || ipAddress.equals("0:0:0:0:0:0:0:1") || ipAddress.equals("::1")) {
+            return 0.0;
+        }
+
+        // Check if client is on the same subnet using NetworkUtils
+        if (NetworkUtils.isSameSubnet(ipAddress, NetworkUtils.getSystemIp())) {
+            log.debug("IP {} is on the same subnet as the proxy. Assigning 0.0 penalty.", ipAddress);
             return 0.0;
         }
 
