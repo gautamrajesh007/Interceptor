@@ -2,6 +2,7 @@ package com.proxy.interceptor.service.risk;
 
 import com.proxy.interceptor.config.RiskScoringProperties;
 import com.proxy.interceptor.dto.RiskAssessment;
+import com.proxy.interceptor.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -23,6 +24,7 @@ public class DynamicRiskService {
     private final DataSensitivityCalculator dataCalculator;
     private final BehaviorScoreCalculator behaviorCalculator;
     private final ContextScoreCalculator contextCalculator;
+    private final UserService userService;
 
     /**
      * Evaluate a SQL query and return its risk assessment.
@@ -46,26 +48,38 @@ public class DynamicRiskService {
                 (properties.getContextWeight() * contextScore)
         );
 
-        // T(R) = ceil(T_min + (T_max - T_min) * R^gamma)
-        int requiredApprovals = (int) Math.ceil(
-                properties.getMinApprovals() +
-                (properties.getMaxApprovals() - properties.getMinApprovals()) *
-                Math.pow(totalRisk, properties.getGamma())
-        );
+        // Calculate dynamic bounds based on actual registered PEER users
+        int totalPeers = userService.getTotalPeerReviewers();
+        int requiredApprovals = getRequiredApprovals(totalPeers, totalRisk);
 
-        // Clamp to bounds
-        requiredApprovals = Math.max(properties.getMinApprovals(),
-                Math.min(properties.getMaxApprovals(), requiredApprovals));
-
-        log.info("DRS evaluation — SQL: {}... | Syntax: {} | Data: {} | Behavior: {} | Context: {} | R={} → T={}",
+        log.info("DRS evaluation — SQL: {}... | Syntax: {} | Data: {} | Behavior: {} | Context: {} | R={} → T={} (Max Peers: {})",
                 sql.substring(0, Math.min(40, sql.length())),
                 String.format("%.2f", syntaxScore),
                 String.format("%.2f", dataScore),
                 String.format("%.2f", behaviorScore),
                 String.format("%.2f", contextScore),
                 String.format("%.3f", totalRisk),
-                requiredApprovals);
+                requiredApprovals, totalPeers);
 
         return new RiskAssessment(totalRisk, requiredApprovals, syntaxScore, dataScore, behaviorScore, contextScore);
+    }
+
+    private int getRequiredApprovals(int totalPeers, double totalRisk) {
+        int dynamicMaxApprovals = Math.min(properties.getMaxApprovals(), totalPeers);
+
+        // Ensure max is never less than min (e.g., if there are 0 peers currently registered)
+        dynamicMaxApprovals = Math.max(properties.getMinApprovals(), dynamicMaxApprovals);
+
+        // T(R) = ceil(T_min + (T_max - T_min) * R^gamma)
+        int requiredApprovals = (int) Math.ceil(
+                properties.getMinApprovals() +
+                (dynamicMaxApprovals - properties.getMinApprovals()) *
+                Math.pow(totalRisk, properties.getGamma())
+        );
+
+        // Clamp to bounds
+        requiredApprovals = Math.max(properties.getMinApprovals(),
+                Math.min(dynamicMaxApprovals, requiredApprovals));
+        return requiredApprovals;
     }
 }
