@@ -68,7 +68,7 @@ public class BlockedQuery {
     @Column
     private Double riskScore;
 
-    // Nonce for replay attack protection (Phase 2)
+    // Nonce for replay attack protection
     @Column(unique = true)
     private String nonce;
 
