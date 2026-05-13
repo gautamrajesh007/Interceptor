@@ -99,10 +99,12 @@ public class AuthService {
         return userRepository.save(user);
     }
 
-    public void createAdminIfNotExists(String username, String password) {
+    public boolean createAdminIfNotExists(String username, String password) {
         if (!userRepository.existsByUsername(username)) {
             createUser(username, password, Role.ADMIN);
             log.info("Created default admin user: {}", username);
+            return true;
         }
+        return false;
     }
 }
