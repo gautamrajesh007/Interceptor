@@ -24,7 +24,15 @@ public class ConfigController {
     private final ApprovalProperties approvalProperties;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getConfig() {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getConfig(HttpServletRequest httpRequest) {
+        String username = RequestUtils.getUsername(httpRequest);
+        String clientIp = RequestUtils.getClientIp(httpRequest);
+
+        // Audit log for config access
+        auditService.log(username, "config_accessed",
+                "Configuration accessed",
+                clientIp);
+
         Map<String, Object> config = new HashMap<>();
         config.put("proxy_port", proxyProperties.getListenPort());
         config.put("target_host", proxyProperties.getTargetHost());
