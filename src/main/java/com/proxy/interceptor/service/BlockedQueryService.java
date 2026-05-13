@@ -95,6 +95,13 @@ public class BlockedQueryService {
         // Publish notification to Redis for real-time updates
         queryEventPublisher.publishBlocked(query);
 
+        // Audit log for query interception
+        auditService.log("SYSTEM", "query_blocked",
+                String.format("Query #%d blocked from %s: %s (Type: %s, Risk: %s, Required Approvals: %d)",
+                        query.getId(), connId, sql.substring(0, Math.min(100, sql.length())),
+                        queryType, riskScore != null ? String.format("%.3f", riskScore) : "N/A", requiredApprovals),
+                clientIp);
+
         log.info("Blocked query #{} from {}: {}", query.getId(), connId, sql.substring(0, Math.min(50, sql.length())));
     }
 
@@ -124,7 +131,10 @@ public class BlockedQueryService {
 
         // Audit
         auditService.log(approvedBy, "query_approved",
-                String.format("Query #%d approved: %s", id, query.getQueryPreview()), null);
+                String.format("Query #%d approved: %s (Type: %s, Risk: %s)",
+                        id, query.getQueryPreview(), query.getQueryType().name(),
+                        query.getRiskScore() != null ? String.format("%.3f", query.getRiskScore()) : "N/A"),
+                null);
 
         // Publish approval notification
         queryEventPublisher.publishApproval(query, "APPROVED", approvedBy);
@@ -160,7 +170,10 @@ public class BlockedQueryService {
 
         // Audit
         auditService.log(rejectedBy, "query_rejected",
-                String.format("Query #%d rejected: %s", id, query.getQueryPreview()), null);
+                String.format("Query #%d rejected: %s (Type: %s, Risk: %s)",
+                        id, query.getQueryPreview(), query.getQueryType().name(),
+                        query.getRiskScore() != null ? String.format("%.3f", query.getRiskScore()) : "N/A"),
+                null);
 
         // Publish rejection notification
         queryEventPublisher.publishApproval(query, "REJECTED", rejectedBy);
@@ -253,6 +266,15 @@ public class BlockedQueryService {
 
         // Publish vote notification
         queryEventPublisher.publishVote(id, username, vote);
+
+        // Audit log for vote
+        auditService.log(username, "query_vote",
+                String.format("Vote %s on query #%d (Type: %s, Risk: %s, Approvals: %d/%d, Rejections: %d/%d)",
+                        vote, id, query.getQueryType().name(),
+                        query.getRiskScore() != null ? String.format("%.3f", query.getRiskScore()) : "N/A",
+                        pending.approvals().size(), query.getRequiredApprovals(),
+                        pending.rejections().size(), query.getRequiredApprovals()),
+                null);
 
         return Map.of(
                 "success", true,
