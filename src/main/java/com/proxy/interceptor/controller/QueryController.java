@@ -27,21 +27,46 @@ public class QueryController {
     private final ReplayProtectionService replayProtectionService;
 
     @GetMapping("/blocked")
-    public ResponseEntity<ApiResponse<List<BlockedQuery>>> getBlockedQueries() {
+    public ResponseEntity<ApiResponse<List<BlockedQuery>>> getBlockedQueries(HttpServletRequest httpRequest) {
+        String username = RequestUtils.getUsername(httpRequest);
+        String clientIp = RequestUtils.getClientIp(httpRequest);
+
+        // Audit log for pending queries access
+        auditService.log(username, "pending_queries_accessed",
+                "Pending queries accessed",
+                clientIp);
+
         return ResponseEntity.ok(ApiResponse.ok(blockedQueryService.getPendingQueries()));
     }
 
     @GetMapping("/blocked/all")
-    public ResponseEntity<ApiResponse<List<BlockedQuery>>> getAllQueries() {
+    public ResponseEntity<ApiResponse<List<BlockedQuery>>> getAllQueries(HttpServletRequest httpRequest) {
+        String username = RequestUtils.getUsername(httpRequest);
+        String clientIp = RequestUtils.getClientIp(httpRequest);
+
+        // Audit log for all queries access
+        auditService.log(username, "all_queries_accessed",
+                "All queries accessed",
+                clientIp);
+
         return ResponseEntity.ok(ApiResponse.ok(blockedQueryService.getAllQueries()));
     }
 
     @GetMapping("/blocked/{id}/votes")
-    public ResponseEntity<ApiResponse<?>> getVoteStatus(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<?>> getVoteStatus(@PathVariable Long id, HttpServletRequest httpRequest) {
+        String username = RequestUtils.getUsername(httpRequest);
+        String clientIp = RequestUtils.getClientIp(httpRequest);
+
         var status = blockedQueryService.getVoteStatus(id);
         if (status == null) {
             return ResponseEntity.status(404).body(ApiResponse.error("Query or vote status not found"));
         }
+
+        // Audit log for vote status access
+        auditService.log(username, "vote_status_accessed",
+                String.format("Vote status accessed for query #%d", id),
+                clientIp);
+
         return ResponseEntity.ok(ApiResponse.ok(status));
     }
 

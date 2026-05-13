@@ -41,6 +41,11 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
             log.debug("{}: Client connected from IP: {}", connId, state.getClientIp());
         }
 
+        // Audit log for client connection
+        ctx.auditService().log("SYSTEM", "proxy_client_connected",
+                String.format("Client connected: %s from IP: %s", connId, state.getClientIp()),
+                state.getClientIp());
+
         // Connect to the PostgreSQL db engine
         Bootstrap b = new Bootstrap();
         b.group(nettyCtx.channel().eventLoop())
@@ -61,7 +66,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
                         }
 
                         // Add the standard server handler
-                        ch.pipeline().addLast(new ServerHandler(connId, clientChannel, ctx.metricsService()));
+                        ch.pipeline().addLast(new ServerHandler(connId, clientChannel, ctx.metricsService(), ctx.auditService()));
                     }
                 });
 
@@ -69,9 +74,22 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
             if (future.isSuccess()) {
                 state.setServerChannel(future.channel());
                 log.debug("{}: Connected to PostgreSQL db engine", connId);
+
+                // Audit log for successful backend connection
+                ctx.auditService().log("SYSTEM", "proxy_backend_connected",
+                        String.format("Backend connected: %s to %s:%d", connId, ctx.targetHost(), ctx.targetPort()),
+                        state.getClientIp());
             } else {
                 log.error("{}: Failed to connect to PostgreSQL", connId);
                 ctx.metricsService().trackError();
+
+                // Audit log for backend connection failure
+                ctx.auditService().log("SYSTEM", "proxy_backend_connection_failed",
+                        String.format("Backend connection failed: %s to %s:%d - %s",
+                                connId, ctx.targetHost(), ctx.targetPort(),
+                                future.cause() != null ? future.cause().getMessage() : "Unknown error"),
+                        state.getClientIp());
+
                 sendErrorToClient(nettyCtx, "Failed to connect to db engine");
                 nettyCtx.close();
             }
@@ -176,6 +194,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 
                 ctx.blockedQueryService().addBlockedQuery(
                         connId,
+                        state.getClientIp(),
                         "SIMPLE",
                         sql,
                         buf.retainedDuplicate(),
@@ -235,6 +254,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 
         ctx.blockedQueryService().addBlockedQuery(
                 connId,
+                state.getClientIp(),
                 "EXTENDED",
                 sql,
                 combinedBuf,
@@ -287,6 +307,11 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
         ctx.blockedQueryService().cleanupConnection(connId);
         state.resetBatch();
 
+        // Audit log for client disconnection
+        ctx.auditService().log("SYSTEM", "proxy_client_disconnected",
+                String.format("Client disconnected: %s from IP: %s", connId, state.getClientIp()),
+                state.getClientIp());
+
         if (state.getServerChannel() != null) {
             state.getServerChannel().close();
         }
@@ -297,6 +322,14 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
         log.error("{}: Client error: {}", connId, cause.getMessage());
         ctx.metricsService().trackError();
         state.resetBatch();
+
+        // Audit log for client error
+        ctx.auditService().log("SYSTEM", "proxy_client_error",
+                String.format("Client error: %s from IP: %s - %s",
+                        connId, state.getClientIp(),
+                        cause.getMessage() != null ? cause.getMessage() : "Unknown error"),
+                state.getClientIp());
+
         nettyCtx.close();
     }
 

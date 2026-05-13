@@ -87,9 +87,15 @@ Core approval path for intercepted SQL.
   "resolvedBy": null,
   "requiresPeerApproval": true,
   "approvalCount": 1,
-  "rejectionCount": 0
+  "rejectionCount": 0,
+  "requiredApprovals": 2,
+  "riskScore": 0.75
 }
 ```
+
+**Dynamic Risk Scoring Fields:**
+- `requiredApprovals`: Dynamically computed number of approvals needed based on risk score
+- `riskScore`: Computed risk score R ∈ [0.0, 1.0] for audit/dashboard visibility
 
 ### Approve/Reject Request
 
@@ -119,6 +125,7 @@ Allowed `vote` values: `APPROVE`, `REJECT`.
 - Replay protection applies when both `nonce` and `timestamp` are provided.
 - Duplicate votes can return `403` with details (`duplicate: true`).
 - Vote status endpoint returns aggregated counts and may include voter username lists.
+- `requiredApprovals` is computed by DRS at interception time and stored for audit purposes.
 
 ### Compatibility Notes
 
@@ -184,8 +191,8 @@ Proxy configuration snapshot and update acknowledgment.
   "target_host": "localhost",
   "target_port": 5433,
   "block_by_default": true,
-  "critical_keywords": "DROP, ALTER, TRUNCATE",
-  "allowed_keywords": "SELECT, CREATE",
+  "critical_keywords": "DROP,ALTER,TRUNCATE",
+  "allowed_keywords": "SELECT,CREATE",
   "peer_approval_enabled": true,
   "peer_approval_min_votes": 2
 }
@@ -298,6 +305,66 @@ Frontend should handle both shapes.
 
 ---
 
+## Module 8: Dynamic Risk Scoring (Internal)
+
+Dynamic Risk Scoring is an internal service that computes risk scores and required approval counts. It is not directly exposed via REST API but influences the Query Workflow module.
+
+### Risk Assessment Components
+
+The DRS service computes four sub-scores:
+
+1. **Syntax Score (S_syn)**: Analyzes SQL complexity (depth, joins)
+2. **Data Score (S_data)**: Scores based on table/column sensitivity
+3. **Behavior Score (S_beh)**: Tracks query patterns per connection
+4. **Context Score (S_ctx)**: Scores based on IP and time-of-day
+
+### Risk Formula
+
+```
+R = min(1.0, w1*S_syn + w2*S_data + w3*S_beh + w4*S_ctx)
+T(R) = ceil(T_min + (T_max - T_min) * R^gamma)
+```
+
+Where:
+- `R` is the overall risk score ∈ [0.0, 1.0]
+- `T(R)` is the required number of approvals
+- `w1, w2, w3, w4` are configurable weights (must sum to 1.0)
+- `T_min` is the minimum required approvals
+- `T_max` is the maximum required approvals
+- `gamma` is the gamma parameter for the threshold function
+
+### Configuration
+
+DRS is configured via `risk-scoring.*` properties in `application-dev.yaml`:
+
+- `risk-scoring.enabled`: Enable/disable DRS
+- `risk-scoring.syntax-weight`: Weight for syntax complexity
+- `risk-scoring.data-weight`: Weight for data sensitivity
+- `risk-scoring.behavior-weight`: Weight for behavioral patterns
+- `risk-scoring.context-weight`: Weight for context factors
+- `risk-scoring.min-approvals`: Minimum required approvals
+- `risk-scoring.max-approvals`: Maximum required approvals
+- `risk-scoring.gamma`: Gamma parameter for threshold function
+- `risk-scoring.sensitivity-map`: Table/column sensitivity scores
+- `risk-scoring.business-hour-start`: Start of business hours
+- `risk-scoring.business-hour-end`: End of business hours
+- `risk-scoring.trusted-ip-prefixes`: Trusted IP prefixes
+
+### Risk Assessment Object (Internal)
+
+```java
+public record RiskAssessment(
+    double riskScore,         // Overall risk score R ∈ [0.0, 1.0]
+    int requiredApprovals,   // Computed threshold T(R)
+    double syntaxScore,       // S_syn component
+    double dataScore,         // S_data component
+    double behaviorScore,    // S_beh component
+    double contextScore       // S_ctx component
+) {}
+```
+
+---
+
 ## Security and Access Matrix
 
 | Area | Access Rule |
@@ -346,4 +413,68 @@ curl -X POST https://localhost/api/reject \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"id":101}'
+```
+
+### Vote on query (peer mode)
+
+```bash
+curl -X POST https://localhost/api/vote \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"id":101,"vote":"APPROVE"}'
+```
+
+### Get vote status
+
+```bash
+curl -H "Authorization: Bearer <token>" https://localhost/api/blocked/101/votes
+```
+
+### Get metrics
+
+```bash
+curl -H "Authorization: Bearer <token>" https://localhost/api/metrics
+```
+
+### Get audit logs
+
+```bash
+curl -H "Authorization: Bearer <token>" https://localhost/api/audit
+```
+
+### Get user audit logs
+
+```bash
+curl -H "Authorization: Bearer <token>" https://localhost/api/audit/user/admin
+```
+
+### Get configuration
+
+```bash
+curl -H "Authorization: Bearer <token>" https://localhost/api/config
+```
+
+### Update configuration
+
+```bash
+curl -X PUT https://localhost/api/config \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"proxy_port":5432,"target_host":"localhost","target_port":5433,"block_by_default":true,"critical_keywords":"DROP,ALTER,TRUNCATE","allowed_keywords":"SELECT,CREATE","peer_approval_enabled":true,"peer_approval_min_votes":2}'
+```
+
+### Create user
+
+```bash
+curl -X POST https://localhost/api/users \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"peer-user","password":"strong-password","role":"PEER"}'
+```
+
+### Delete user
+
+```bash
+curl -X DELETE https://localhost/api/users/2 \
+  -H "Authorization: Bearer <token>"
 ```

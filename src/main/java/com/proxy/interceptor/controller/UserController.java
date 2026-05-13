@@ -32,8 +32,17 @@ public class UserController {
     private final AuditService auditService;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<UserResponse>>> getAllUsers() {
+    public ResponseEntity<ApiResponse<List<UserResponse>>> getAllUsers(HttpServletRequest httpRequest) {
+        String adminUsername = RequestUtils.getUsername(httpRequest);
+        String clientIp = RequestUtils.getClientIp(httpRequest);
+
         log.info("Total number of PEERS = {}", userService.getTotalPeerReviewers());
+
+        // Audit log for user list access
+        auditService.log(adminUsername, "users_list_accessed",
+                "User list accessed",
+                clientIp);
+
         return ResponseEntity.ok(ApiResponse.ok(userService.getAllUsers()));
     }
 

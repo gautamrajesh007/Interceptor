@@ -1,10 +1,13 @@
 package com.proxy.interceptor.service;
 
 import com.proxy.interceptor.config.ApprovalProperties;
+import com.proxy.interceptor.config.RiskScoringProperties;
 import com.proxy.interceptor.dto.PendingQuery;
+import com.proxy.interceptor.dto.RiskAssessment;
 import com.proxy.interceptor.messaging.QueryEventPublisher;
 import com.proxy.interceptor.model.*;
 import com.proxy.interceptor.repository.BlockedQueryRepository;
+import com.proxy.interceptor.service.risk.DynamicRiskService;
 import io.netty.buffer.ByteBuf;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,12 +31,15 @@ public class BlockedQueryService {
     private final QueryEventPublisher queryEventPublisher;
     private final AuditService auditService;
     private final ApprovalProperties approvalProperties;
+    private final DynamicRiskService dynamicRiskService;
+    private final RiskScoringProperties riskScoringProperties;
 
     // In-memory store for pending queries with their callbacks
     private final ConcurrentHashMap<Long, PendingQuery> pendingQueries = new ConcurrentHashMap<>();
 
     @Transactional
     public void addBlockedQuery(String connId,
+                                String clientIp,
                                 String queryType,
                                 String sql,
                                 ByteBuf originalMessage,
@@ -43,12 +49,32 @@ public class BlockedQueryService {
         // Generate nonce for replay protection
         String nonce = UUID.randomUUID().toString();
 
+        // Dynamic Risk Scoring
+        int requiredApprovals;
+        Double riskScore = null;
+
+        if (riskScoringProperties.isEnabled()) {
+            // Evaluate query risk dynamically
+            // Pass the actual clientIp down to the DRS engine
+            RiskAssessment riskAssessment = dynamicRiskService.evaluateQuery(sql, connId, clientIp);
+            requiredApprovals = riskAssessment.requiredApprovals();
+            riskScore = riskAssessment.riskScore();
+
+            log.info("DRS: Query from {} scored R={} → {} approvals required",
+                    connId, String.format("%.3f", riskScore), requiredApprovals);
+        } else {
+            // Fallback to static minVotes from config
+            requiredApprovals = approvalProperties.getMinVotes();
+        }
+
         // Save to database
         BlockedQuery query = BlockedQuery.builder()
                 .connId(connId)
                 .queryType(QueryType.valueOf(queryType))
                 .queryPreview(sql.length() > 4000 ? sql.substring(0, 4000) : sql)
                 .requiresPeerApproval(approvalProperties.isPeerEnabled())
+                .requiredApprovals(requiredApprovals)
+                .riskScore(riskScore)
                 .nonce(nonce)
                 .build();
 
@@ -68,6 +94,13 @@ public class BlockedQueryService {
 
         // Publish notification to Redis for real-time updates
         queryEventPublisher.publishBlocked(query);
+
+        // Audit log for query interception
+        auditService.log("SYSTEM", "query_blocked",
+                String.format("Query #%d blocked from %s: %s (Type: %s, Risk: %s, Required Approvals: %d)",
+                        query.getId(), connId, sql.substring(0, Math.min(100, sql.length())),
+                        queryType, riskScore != null ? String.format("%.3f", riskScore) : "N/A", requiredApprovals),
+                clientIp);
 
         log.info("Blocked query #{} from {}: {}", query.getId(), connId, sql.substring(0, Math.min(50, sql.length())));
     }
@@ -98,7 +131,10 @@ public class BlockedQueryService {
 
         // Audit
         auditService.log(approvedBy, "query_approved",
-                String.format("Query $%d approved: %s", id, query.getQueryPreview()), null);
+                String.format("Query #%d approved: %s (Type: %s, Risk: %s)",
+                        id, query.getQueryPreview(), query.getQueryType().name(),
+                        query.getRiskScore() != null ? String.format("%.3f", query.getRiskScore()) : "N/A"),
+                null);
 
         // Publish approval notification
         queryEventPublisher.publishApproval(query, "APPROVED", approvedBy);
@@ -134,7 +170,10 @@ public class BlockedQueryService {
 
         // Audit
         auditService.log(rejectedBy, "query_rejected",
-                String.format("Query #%d rejected: %s", id, query.getQueryPreview()), null);
+                String.format("Query #%d rejected: %s (Type: %s, Risk: %s)",
+                        id, query.getQueryPreview(), query.getQueryType().name(),
+                        query.getRiskScore() != null ? String.format("%.3f", query.getRiskScore()) : "N/A"),
+                null);
 
         // Publish rejection notification
         queryEventPublisher.publishApproval(query, "REJECTED", rejectedBy);
@@ -174,7 +213,6 @@ public class BlockedQueryService {
             // User already voted
             if (existingApproval.getVote() == voteEnum) {
                 log.info("User {} already voted {} on query #{}. Ignoring duplicate.", username, vote, id);
-                // Return success without DB write to save resources
                 return Map.of(
                         "success", false,
                         "duplicate", true,
@@ -213,19 +251,30 @@ public class BlockedQueryService {
         // Save changes
         blockedQueryRepository.save(query);
 
-        // Check threshold
-        if (pending.approvals().size() >= approvalProperties.getMinVotes()) {
+        // Dynamic threshold check
+        int threshold = query.getRequiredApprovals();
+
+        if (pending.approvals().size() >= threshold) {
             approveQuery(id, "Peer Approval System");
             return Map.of("success", true, "duplicate", false, "autoResolved", true, "action", "approved");
         }
 
-        if (pending.rejections().size() >= approvalProperties.getMinVotes()) {
+        if (pending.rejections().size() >= threshold) {
             rejectQuery(id, "Peer Approval System");
             return Map.of("success", true, "duplicate", false, "autoResolved", true, "action", "rejected");
         }
 
         // Publish vote notification
         queryEventPublisher.publishVote(id, username, vote);
+
+        // Audit log for vote
+        auditService.log(username, "query_vote",
+                String.format("Vote %s on query #%d (Type: %s, Risk: %s, Approvals: %d/%d, Rejections: %d/%d)",
+                        vote, id, query.getQueryType().name(),
+                        query.getRiskScore() != null ? String.format("%.3f", query.getRiskScore()) : "N/A",
+                        pending.approvals().size(), query.getRequiredApprovals(),
+                        pending.rejections().size(), query.getRequiredApprovals()),
+                null);
 
         return Map.of(
                 "success", true,

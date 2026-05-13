@@ -1,5 +1,6 @@
 package com.proxy.interceptor.proxy;
 
+import com.proxy.interceptor.service.AuditService;
 import com.proxy.interceptor.service.MetricsService;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
@@ -13,13 +14,16 @@ public class ServerHandler extends ChannelInboundHandlerAdapter {
     private final String connId;
     private final Channel clientChannel;
     private final MetricsService metricsService;
+    private final AuditService auditService;
 
     public ServerHandler(String connId,
                          Channel clientChannel,
-                         MetricsService metricsService) {
+                         MetricsService metricsService,
+                         AuditService auditService) {
         this.connId = connId;
         this.clientChannel = clientChannel;
         this.metricsService = metricsService;
+        this.auditService = auditService;
     }
 
     @Override
@@ -42,6 +46,12 @@ public class ServerHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
         log.debug("{}: Server connection closed", connId);
+
+        // Audit log for server disconnection
+        auditService.log("SYSTEM", "proxy_server_disconnected",
+                String.format("Server connection closed: %s", connId),
+                null);
+
         if (clientChannel.isActive()) {
             clientChannel.close();
         }
@@ -51,6 +61,14 @@ public class ServerHandler extends ChannelInboundHandlerAdapter {
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
         log.error("{}: Server error: {}", connId, cause.getMessage());
         metricsService.trackError();
+
+        // Audit log for server error
+        auditService.log("SYSTEM", "proxy_server_error",
+                String.format("Server error: %s - %s",
+                        connId,
+                        cause.getMessage() != null ? cause.getMessage() : "Unknown error"),
+                null);
+
         ctx.close();
     }
 }
