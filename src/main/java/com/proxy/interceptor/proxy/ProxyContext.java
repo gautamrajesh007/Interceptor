@@ -1,6 +1,7 @@
 package com.proxy.interceptor.proxy;
 
 import com.proxy.interceptor.config.SslContextFactory;
+import com.proxy.interceptor.service.AuditService;
 import com.proxy.interceptor.service.BlockedQueryService;
 import com.proxy.interceptor.service.MetricsService;
 
@@ -19,5 +20,6 @@ public record ProxyContext(
         MetricsService metricsService,
         EventLoopGroupFactory eventLoopGroupFactory,
         SslContextFactory sslContextFactory,
-        ConcurrentHashMap<String, ConnectionState> connections
+        ConcurrentHashMap<String, ConnectionState> connections,
+        AuditService auditService
 ) {}
