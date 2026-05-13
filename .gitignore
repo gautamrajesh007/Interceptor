@@ -12,6 +12,7 @@ src/main/resources/application-prod.yaml
 certs/
 src/main/resources/ssl/
 CLAUDE.md
+.DS_Store
 
 ### STS ###
 .apt_generated
