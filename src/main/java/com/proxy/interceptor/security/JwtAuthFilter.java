@@ -3,6 +3,8 @@ package com.proxy.interceptor.security;
 import com.proxy.interceptor.dto.TokenClaims;
 import com.proxy.interceptor.model.User;
 import com.proxy.interceptor.repository.UserRepository;
+import com.proxy.interceptor.service.AuditService;
+import com.proxy.interceptor.util.RequestUtils;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -27,6 +29,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final UserRepository userRepository;
+    private final AuditService auditService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -34,7 +37,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                                     @NonNull FilterChain filterChain) throws ServletException, IOException {
 
         String authHeader = request.getHeader("Authorization");
-        log.debug("Processing request: {} {}", request.getMethod(), request.getRequestURI());
+        String clientIp = RequestUtils.getClientIp(request);
+        String requestUri = request.getRequestURI();
+        log.debug("Processing request: {} {}", request.getMethod(), requestUri);
 
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7);
@@ -65,13 +70,25 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                         log.info("Authenticated user: {}, role: {}, token version: {}", username, role, tokenVersion);
                     } else {
                         log.warn("Token version mismatch for user {}", username);
+                        auditService.log(username, "auth_token_version_mismatch",
+                                String.format("Token version mismatch for user %s (JWT: %d, DB: %d) on %s",
+                                        username, jwtVersion, dbVersion, requestUri),
+                                clientIp);
                     }
+                } else {
+                    log.warn("User not found: {}", username);
+                    auditService.log(username, "auth_user_not_found",
+                            String.format("User not found: %s on %s", username, requestUri),
+                            clientIp);
                 }
             } else {
                 log.warn("Invalid JWT token");
+                auditService.log("UNKNOWN", "auth_invalid_token",
+                        String.format("Invalid JWT token on %s", requestUri),
+                        clientIp);
             }
         } else {
-            log.warn("No Authorization header present");
+            log.debug("No Authorization header present");
         }
         filterChain.doFilter(request, response);
     }
