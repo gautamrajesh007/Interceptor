@@ -2,6 +2,7 @@ package com.proxy.interceptor.proxy;
 
 import com.proxy.interceptor.config.ProxyProperties;
 import com.proxy.interceptor.config.SslContextFactory;
+import com.proxy.interceptor.service.AuditService;
 import com.proxy.interceptor.service.BlockedQueryService;
 import com.proxy.interceptor.service.MetricsService;
 import io.netty.bootstrap.ServerBootstrap;
@@ -30,6 +31,7 @@ public class ProxyServer {
     private final MetricsService metricsService;
     private final EventLoopGroupFactory eventLoopGroupFactory;
     private final SslContextFactory sslContextFactory;
+    private final AuditService auditService;
 
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
@@ -44,7 +46,8 @@ public class ProxyServer {
                        BlockedQueryService blockedQueryService,
                        MetricsService metricsService,
                        EventLoopGroupFactory eventLoopGroupFactory,
-                       @Autowired(required = false) @Nullable SslContextFactory sslContextFactory
+                       @Autowired(required = false) @Nullable SslContextFactory sslContextFactory,
+                       AuditService auditService
     ) {
         this.proxyProperties = proxyProperties;
         this.sqlClassifier = sqlClassifier;
@@ -53,6 +56,7 @@ public class ProxyServer {
         this.metricsService = metricsService;
         this.eventLoopGroupFactory = eventLoopGroupFactory;
         this.sslContextFactory = sslContextFactory;
+        this.auditService = auditService;
     }
 
     @PostConstruct
@@ -71,7 +75,8 @@ public class ProxyServer {
                 metricsService,
                 eventLoopGroupFactory,
                 sslContextFactory,
-                connections
+                connections,
+                auditService
         );
 
         ServerBootstrap b = new ServerBootstrap();
