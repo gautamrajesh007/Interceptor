@@ -69,8 +69,8 @@ Core approval path for intercepted SQL.
 | `GET` | `/api/blocked` | `ADMIN` or `PEER` | Pending queries |
 | `GET` | `/api/blocked/all` | `ADMIN` or `PEER` | Full query history |
 | `GET` | `/api/blocked/{id}/votes` | `ADMIN` or `PEER` | Vote status details |
-| `POST` | `/api/approve` | `ADMIN` or `PEER` | Direct approve path |
-| `POST` | `/api/reject` | `ADMIN` or `PEER` | Direct reject path |
+| `POST` | `/api/approve` | `ADMIN` | Master approve (direct) |
+| `POST` | `/api/reject` | `ADMIN` | Master reject (direct) |
 | `POST` | `/api/vote` | `ADMIN` or `PEER` | Vote path (`APPROVE`/`REJECT`) |
 
 ### Query Object (Representative)
@@ -370,8 +370,8 @@ public record RiskAssessment(
 | Area | Access Rule |
 | --- | --- |
 | Public | Static assets, `/ws/**`, `/api/login`, `/api/logout`, health/docs routes |
-| Admin-only | `/api/users/**`, `/api/config/**`, `/api/audit/**` |
-| Admin/Peer | `/api/blocked/**`, `/api/approve`, `/api/reject`, `/api/vote` |
+| Admin-only | `/api/users/**`, `/api/config/**`, `/api/audit/**`, `/api/approve`, `/api/reject` |
+| Admin/Peer | `/api/blocked/**`, `/api/vote` |
 | Other | Authenticated |
 
 ---
