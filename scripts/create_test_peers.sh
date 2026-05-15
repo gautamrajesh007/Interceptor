@@ -24,8 +24,6 @@ for i in {1..20}; do
       -H "Content-Type: application/json" \
       -d '{"username":"'"$USER"'","password":"password123","role":"PEER"}')
 
-    echo '{"username":"'"$USER"'","password":"password123","role":"PEER"}'
-
     if [[ "$RESPONSE" == "200" ]]; then
         echo "✅ Success"
     else
@@ -34,3 +32,17 @@ for i in {1..20}; do
 done
 
 echo "🎉 Done creating 20 PEER users."
+
+# --- LOGOUT SECTION ---
+echo "🚪 Logging out Admin user..."
+
+LOGOUT_RESPONSE=$(curl -k -s -X POST https://localhost/api/logout \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json")
+
+if [[ $(echo $LOGOUT_RESPONSE | grep -o '"success":true') ]]; then
+    echo "✅ Admin logged out successfully."
+else
+    echo "⚠️ Logout failed or returned an unexpected response."
+    echo "Response: $LOGOUT_RESPONSE"
+fi
