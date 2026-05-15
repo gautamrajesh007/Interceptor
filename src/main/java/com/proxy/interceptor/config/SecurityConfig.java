@@ -49,9 +49,11 @@ public class SecurityConfig {
                 // Admin-only endpoints
                 .requestMatchers("/api/users/**", "/api/config/**", "/api/audit/**")
                 .hasRole("ADMIN")
+                // Master approve/reject — ADMIN only
+                .requestMatchers("/api/approve", "/api/reject")
+                .hasRole("ADMIN")
                 // Protected endpoints (both ADMIN and PEER)
-                .requestMatchers("/api/blocked/**", "/api/approve", "/api/reject",
-                        "/api/vote")
+                .requestMatchers("/api/blocked/**", "/api/vote")
                 .hasAnyRole("ADMIN", "PEER")
                 .anyRequest().authenticated()
                 )
