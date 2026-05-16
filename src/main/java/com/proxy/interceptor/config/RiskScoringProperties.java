@@ -24,7 +24,7 @@ public class RiskScoringProperties {
 
     // Threshold function parameters
     private int minApprovals = 1;
-    private int maxApprovals = 5;
+    private int maxApprovals = 20;
     private double gamma = 2.0;
 
     // Syntax scoring penalties
