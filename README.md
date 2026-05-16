@@ -22,11 +22,12 @@ Interceptor is a database authorization proxy that sits between your application
 ### Key Features
 
 - **PostgreSQL Wire Protocol Proxy**: Netty-based proxy that intercepts both Simple Query and Extended Query protocols
-- **Dynamic Risk Scoring (DRS)**: Multi-factor risk assessment that dynamically determines required approval counts
-- **Peer Approval Workflow**: Configurable peer voting system for query approvals
+- **Dynamic Risk Scoring (DRS)**: Four-factor risk assessment that dynamically determines required approval counts
+- **Peer Approval Workflow**: Configurable peer voting system with dynamic thresholds capped to registered peer count
 - **Real-time Dashboard**: WebSocket-powered dashboard for live query monitoring and approval
-- **Comprehensive Audit Trail**: Full audit logging of all authentication and query decision events
-- **TLS Everywhere**: End-to-end encryption for proxy, dashboard, and Redis connections
+- **Comprehensive Audit Trail**: Full audit logging of all authentication, proxy events, and query decisions with configurable retention
+- **TLS Everywhere**: End-to-end TLSv1.3 encryption for proxy, dashboard, PostgreSQL, and Redis connections
+- **Unified API Envelope**: All REST responses wrapped in a consistent `ApiResponse<T>` format
 
 ---
 
@@ -54,37 +55,55 @@ This layout keeps docs and implementation decoupled: each module can evolve inde
 ```text
 Client App -> Interceptor Proxy (:5432) -> Target PostgreSQL (:5433)
                      |
-                     +-> Dashboard/API (HTTPS, default :443)
+                     +-> Dashboard/API (HTTPS :443)
                      +-> Redis pub/sub (TLS :6380)
+                     +-> Metadata PostgreSQL (:5434)
 ```
 
 ### Core Components
 
 **Proxy Pipeline**
-- `ProxyServer`: Netty-based PostgreSQL proxy server
-- `ClientHandler`: Handles client connections and query interception
-- `WireProtocolHandler`: Parses PostgreSQL wire protocol messages
-- `SqlClassifier`: Classifies queries based on keywords
-- `ast/JSqlParserAnalyzer`: SQL AST analysis for operation type extraction
+- `ProxyServer`: Netty-based PostgreSQL proxy server with native transport (kqueue/epoll)
+- `ClientHandler`: Handles client connections, SSLRequest negotiation, and query interception
+- `ServerHandler`: Handles backend PostgreSQL responses
+- `BackendSslNegotiationHandler`: Negotiates TLS with the backend PostgreSQL server
+- `WireProtocolHandler`: Parses PostgreSQL wire protocol messages (Simple Query `Q`, Parse `P`, Bind `B`, Describe `D`, Execute `E`, Sync `S`)
+- `SqlClassifier`: Classifies queries via AST analysis with naive-string-match fallback
+- `ast/JSqlParserAnalyzer`: SQL AST analysis for operation type extraction (via JSqlParser 5.3)
+- `ConnectionState`: Per-connection state tracking (client IP, SSL negotiation, extended batch buffering)
+- `ProxyContext`: Shared dependency context record passed to all channel handlers
+- `EventLoopGroupFactory`: Native transport selection (kqueue on macOS, epoll on Linux)
 
 **Dynamic Risk Scoring**
 - `DynamicRiskService`: Orchestrates four sub-score calculators
-- `SyntaxScoreCalculator`: Analyzes SQL complexity (depth, joins)
-- `DataSensitivityCalculator`: Scores based on table/column sensitivity
+- `SyntaxScoreCalculator`: Analyzes SQL complexity (subquery depth, join count)
+- `DataSensitivityCalculator`: Scores based on table/column sensitivity mappings
 - `BehaviorScoreCalculator`: Tracks query patterns per connection
-- `ContextScoreCalculator`: Scores based on IP and time-of-day
+- `ContextScoreCalculator`: Scores based on IP trustworthiness and time-of-day
 
 Risk formula: `R = min(1.0, w1*S_syn + w2*S_data + w3*S_beh + w4*S_ctx)`
 Required approvals: `T(R) = ceil(T_min + (T_max - T_min) * R^gamma)`
+Dynamic cap: `T_max = min(config.maxApprovals, registeredPeerCount)`
 
 **Security**
-- `JwtTokenProvider`: JWT token generation and validation
-- `JwtAuthFilter`: JWT authentication for REST endpoints
-- `WebSocketAuthInterceptor`: JWT authentication for WebSocket connections
+- `JwtTokenProvider`: JWT token generation and validation (HMAC, jjwt 0.13.0)
+- `JwtAuthFilter`: JWT authentication filter for REST endpoints with token version validation
+- `WebSocketAuthInterceptor`: JWT authentication for STOMP WebSocket connections
+- `SecurityConfig`: URL-based access rules + `@EnableMethodSecurity` for `@PreAuthorize` annotations
+- `ReplayProtectionService`: Nonce + timestamp replay checks backed by Redis TTL keys
+
+**API Layer**
+- `GlobalExceptionHandler`: Centralized `@RestControllerAdvice` for `EntityNotFoundException` and `IllegalArgumentException`
+- `ApiResponse<T>`: Unified response envelope (`{ "success": bool, "data": T, "error": string }`)
 
 **Messaging**
 - `QueryEventPublisher`: Publishes events to Redis for real-time updates
 - `RedisMessageHandler`: Handles Redis pub/sub messages
+- `WebSocketNotificationService`: Broadcasts to STOMP topics (`/topic/blocked`, `/topic/approvals`, `/topic/votes`, `/topic/logs`, `/topic/metrics`)
+
+**Utilities**
+- `RequestUtils`: Client IP extraction (X-Forwarded-For aware) and authenticated username retrieval
+- `NetworkUtils`: System IP detection and subnet comparison
 
 ---
 
@@ -150,8 +169,14 @@ Core settings are in `src/main/resources/application-dev.yaml`.
 - `proxy.target-host`: PostgreSQL target host (default: localhost)
 - `proxy.target-port`: PostgreSQL target port (default: 5433)
 - `proxy.block-by-default`: Whether to block queries by default (default: true)
-- `proxy.critical-keywords`: SQL keywords that require approval
-- `proxy.allowed-keywords`: SQL keywords that bypass blocking
+- `proxy.critical-keywords`: SQL keywords that require approval (default: DROP,ALTER,TRUNCATE,DELETE,GRANT,REVOKE,UPDATE,INSERT)
+- `proxy.allowed-keywords`: SQL keywords that bypass blocking (default: SELECT,CREATE)
+- `proxy.ssl.enabled`: Enable TLS for proxy connections
+
+### Peer Approval Settings
+
+- `approval.peer-enabled`: Enable peer voting workflow (default: true)
+- `approval.min-votes`: Minimum votes for static threshold fallback (default: 2)
 
 ### Dynamic Risk Scoring Settings
 
@@ -161,19 +186,50 @@ Core settings are in `src/main/resources/application-dev.yaml`.
 - `risk-scoring.behavior-weight`: Weight for behavioral patterns (default: 0.3)
 - `risk-scoring.context-weight`: Weight for context factors (default: 0.1)
 - `risk-scoring.min-approvals`: Minimum required approvals (default: 1)
-- `risk-scoring.max-approvals`: Maximum required approvals (default: 5)
+- `risk-scoring.max-approvals`: Maximum required approvals (default: 20)
 - `risk-scoring.gamma`: Gamma parameter for threshold function (default: 2.0)
-- `risk-scoring.sensitivity-map`: Table/column sensitivity scores
+- `risk-scoring.depth-coefficient`: Penalty coefficient for subquery depth (default: 0.15)
+- `risk-scoring.join-coefficient`: Penalty coefficient for join count (default: 0.2)
+- `risk-scoring.sensitivity-map`: Table/column sensitivity scores (map)
 - `risk-scoring.business-hour-start`: Start of business hours (default: 9)
 - `risk-scoring.business-hour-end`: End of business hours (default: 18)
 - `risk-scoring.trusted-ip-prefixes`: Trusted IP prefixes (default: 10., 172.16., 192.168., 127.)
 
+### Audit Settings
+
+- `audit.retention-days`: Number of days to retain audit logs (default: 90)
+- Cleanup runs daily at 2:00 AM via `@Scheduled` cron
+
 ### Security Settings
 
-- `jwt.secret`: JWT signing secret
-- `jwt.expiration`: JWT token expiration in milliseconds (default: 86400000)
-- `server.ssl.*`: HTTPS/TLS configuration
-- `proxy.ssl.*`: Proxy TLS configuration
+- `jwt.secret`: JWT HMAC signing secret
+- `jwt.expiration`: JWT token expiration in milliseconds (default: 86400000 / 24h)
+- `server.ssl.*`: HTTPS/TLS configuration for the dashboard (TLSv1.3, PKCS12)
+- `proxy.ssl.*`: Proxy TLS configuration for PostgreSQL wire protocol connections
+
+---
+
+## API Response Envelope
+
+All REST endpoints return responses wrapped in a unified `ApiResponse<T>` envelope:
+
+```json
+{
+  "success": true,
+  "data": { ... },
+  "error": null
+}
+```
+
+On error:
+
+```json
+{
+  "success": false,
+  "data": null,
+  "error": "Error message"
+}
+```
 
 ---
 
@@ -193,6 +249,15 @@ Core settings are in `src/main/resources/application-dev.yaml`.
 curl -X POST https://localhost/api/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"14495abc"}'
+```
+
+Response:
+```json
+{
+  "success": true,
+  "data": { "token": "eyJhbGciOiJIUzI1NiJ9..." },
+  "error": null
+}
 ```
 
 #### Get Pending Queries
@@ -227,19 +292,43 @@ The frontend currently supports both canonical and legacy contracts to reduce br
 - Canonical pending endpoints: `/api/blocked`, `/api/blocked/all`
 - Legacy fallback endpoints still tolerated by UI: `/api/pending`, `/api/pending/all`
 - Canonical realtime topic: `/topic/blocked`; UI also listens to legacy `/topic/queries`
-- Login canonical response: `{ "token": "..." }` (UI can derive user identity from JWT claims)
+- Login canonical response: `{ "success": true, "data": { "token": "..." } }` (UI can derive user identity from JWT claims)
 
 For full endpoint and payload details, see `API_GUIDE.md`.
 
 ---
 
+## Domain Enums
+
+| Enum | Values | Description |
+| --- | --- | --- |
+| `Role` | `ADMIN`, `PEER` | User roles |
+| `Status` | `PENDING`, `APPROVED`, `REJECTED`, `EXPIRED` | Query lifecycle states |
+| `QueryType` | `SIMPLE`, `EXTENDED` | PostgreSQL wire protocol type |
+| `Vote` | `APPROVE`, `REJECT` | Peer vote values |
+| `AuthMethod` | `PASSWORD`, `OAUTH`, `CERTIFICATE`, `HYBRID` | Authentication methods (future) |
+
+---
+
 ## Security Notes
 
-- JWT-based stateless auth
+- JWT-based stateless auth with token version invalidation on logout
 - BCrypt password hashing
-- TLS-enabled web/proxy/redis paths in dev profile
-- Nonce + timestamp replay checks on sensitive mutation endpoints
-- Audit log coverage for authentication and query decision flow
+- TLSv1.3-enabled web/proxy/redis/PostgreSQL paths in dev profile
+- Nonce + timestamp replay checks (5-minute window) on sensitive mutation endpoints, backed by Redis
+- Audit log coverage for authentication, proxy connection lifecycle, and query decision flow
+- Method-level security via `@PreAuthorize` annotations on controllers
+- Centralized error handling via `GlobalExceptionHandler`
+- Self-deletion protection (admins cannot delete their own account)
+
+---
+
+## OpenAPI / Swagger
+
+When running in dev profile, API documentation is available at:
+
+- Swagger UI: `https://localhost/swagger-ui.html`
+- OpenAPI JSON: `https://localhost/v3/api-docs`
 
 ---
 
@@ -280,16 +369,19 @@ PGPASSWORD='testpass@123' psql -h localhost -p 5432 -U testuser -d testdb "sslmo
 
 ```text
 src/main/java/com/proxy/interceptor/
-  config/       security, websocket, redis wiring
-  controller/   REST controllers
-  dto/          request/response contracts
-  model/        JPA entities
-  proxy/        Netty proxy pipeline
-  repository/   data access
-  security/     JWT auth/filter components
-  service/      business logic
+  InterceptorApplication.java   main entry point, admin bootstrap
+  config/       security, websocket, redis, proxy/approval/risk-scoring properties
+  controller/   REST controllers + GlobalExceptionHandler
+  dto/          request/response contracts (records)
+  model/        JPA entities + enums (Role, Status, QueryType, Vote, AuthMethod)
+  proxy/        Netty proxy pipeline + connection state
+  proxy/ast/    SQL AST analysis (JSqlParser)
+  repository/   Spring Data JPA repositories
+  security/     JWT auth filter, token provider, WebSocket auth interceptor
+  service/      business logic (auth, audit, blocked queries, metrics, replay protection, user, websocket)
   service/risk/ Dynamic Risk Scoring calculators
-  messaging/    Redis pub/sub
+  messaging/    Redis pub/sub publishers and handlers
+  util/         network and request utilities
 ```
 
 ---
