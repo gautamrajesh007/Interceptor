@@ -101,7 +101,7 @@ risk-scoring:
 
   # Threshold function T(R) = ceil(min + (max - min) * R^gamma)
   min-approvals: 1
-  max-approvals: 5
+  max-approvals: 20
   gamma: 2.0
 
   # Syntax analysis coefficients
