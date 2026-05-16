@@ -39,7 +39,7 @@ EOF
 
 # Sign server certificate with CA
 openssl x509 -req -in "$CERT_DIR/server.csr" -CA "$CERT_DIR/ca.crt" -CAkey "$CERT_DIR/ca.key" \
-    -CAcreateserial -out "$CERT_DIR/server.crt" -days 825 -sha384 -extfile "$CERT_DIR/server.ext"
+    -CAcreateserial -out "$CERT_DIR/server.crt" -days 365 -sha384 -extfile "$CERT_DIR/server.ext"
 
 # Generate Client Certificate - ECDSA P-256
 echo "3. Generating Client certificate (ECDSA P-256)..."
@@ -47,7 +47,7 @@ openssl ecparam -genkey -name prime256v1 -noout -out "$CERT_DIR/client.key"
 openssl req -new -key "$CERT_DIR/client.key" -out "$CERT_DIR/client.csr" \
     -subj "/C=US/ST=State/L=City/O=Interceptor/OU=Authority/CN=admin-authority"
 openssl x509 -req -in "$CERT_DIR/client.csr" -CA "$CERT_DIR/ca.crt" -CAkey "$CERT_DIR/ca.key" \
-    -CAcreateserial -out "$CERT_DIR/client.crt" -days 825 -sha384
+    -CAcreateserial -out "$CERT_DIR/client.crt" -days 365 -sha384
 
 # Create PKCS12 keystore for client certificates (for Postgresql JDBC driver)
 echo "3a. Create PKCS12 client keystore..."
