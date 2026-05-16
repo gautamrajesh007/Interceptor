@@ -118,7 +118,8 @@ const Dashboard = (() => {
       const isApproved =
         status.includes("approved") || status.includes("approve");
       const queryId = data.queryId || data.id;
-      const actor = data.resolvedBy || data.approvedBy || data.username || "system";
+      const actor =
+        data.resolvedBy || data.approvedBy || data.username || "system";
       addTimelineEvent(
         isApproved ? "approved" : "rejected",
         isApproved ? "Query Approved" : "Query Rejected",
@@ -397,7 +398,9 @@ const Dashboard = (() => {
   async function loadPendingQueries() {
     try {
       const raw = await API.getBlockedQueries();
-      const queries = normalizeQueryList(raw).filter((q) => q.status === "PENDING");
+      const queries = normalizeQueryList(raw).filter(
+        (q) => q.status === "PENDING",
+      );
       renderPendingList(queries);
     } catch (err) {
       console.warn("Failed to load pending queries:", err);
@@ -440,6 +443,7 @@ const Dashboard = (() => {
                         ${q.requiresPeerApproval ? `<span class="badge badge-purple">Peer Review</span>` : ""}
                         ${q.approvalCount > 0 ? `<span>👍 ${q.approvalCount}</span>` : ""}
                         ${q.rejectionCount > 0 ? `<span>👎 ${q.rejectionCount}</span>` : ""}
+                        ${q.riskScore !== null && q.riskScore !== undefined ? `<span style="cursor:pointer" onclick="event.stopPropagation(); Dashboard.showRiskDetails(${q.id}, ${q.riskScore}, ${q.syntaxScore}, ${q.dataScore}, ${q.behaviorScore}, ${q.contextScore})">${riskScoreBadge(q.riskScore)}</span>` : ""}
                     </div>
                 </div>
                 <div class="pending-actions">
@@ -494,7 +498,7 @@ const Dashboard = (() => {
     }
 
     if (!queries.length) {
-      tbody.innerHTML = `<tr><td colspan="8"><div class="table-empty">No queries found</div></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9"><div class="table-empty">No queries found</div></td></tr>`;
       return;
     }
 
@@ -507,6 +511,7 @@ const Dashboard = (() => {
                 <td><span class="badge badge-neutral">${q.queryType || "—"}</span></td>
                 <td>${q.connId ? `<span class="badge badge-neutral">${escapeHtml(q.connId)}</span>` : "—"}</td>
                 <td>${statusBadge(q.status)}</td>
+                <td>${q.riskScore !== null && q.riskScore !== undefined ? `<span style="cursor:pointer" onclick="Dashboard.showRiskDetails(${q.id}, ${q.riskScore}, ${q.syntaxScore}, ${q.dataScore}, ${q.behaviorScore}, ${q.contextScore})">${riskScoreBadge(q.riskScore)}</span>` : "—"}</td>
                 <td>${renderVoteSummary(q)}</td>
                 <td>${formatDate(q.resolvedAt || q.createdAt)}</td>
                 <td>
@@ -535,7 +540,9 @@ const Dashboard = (() => {
     const resolvedBy = q.resolvedBy ? ` by ${escapeHtml(q.resolvedBy)}` : "";
 
     if (!q.requiresPeerApproval && approvals === 0 && rejections === 0) {
-      return q.status === "PENDING" ? "—" : `<span style="color:var(--text-secondary)">${q.status}${resolvedBy}</span>`;
+      return q.status === "PENDING"
+        ? "—"
+        : `<span style="color:var(--text-secondary)">${q.status}${resolvedBy}</span>`;
     }
 
     return `<span style="white-space:nowrap">👍 ${approvals} / 👎 ${rejections}${resolvedBy}</span>`;
@@ -587,6 +594,96 @@ const Dashboard = (() => {
     } catch (err) {
       showToast(err.error || err.message || "Failed to reject query", "error");
     }
+  }
+
+  async function showRiskDetails(
+    id,
+    riskScore,
+    syntaxScore,
+    dataScore,
+    behaviorScore,
+    contextScore,
+  ) {
+    const riskPct = Math.round((riskScore || 0) * 100);
+    const syntaxPct = Math.round((syntaxScore || 0) * 100);
+    const dataPct = Math.round((dataScore || 0) * 100);
+    const behaviorPct = Math.round((behaviorScore || 0) * 100);
+    const contextPct = Math.round((contextScore || 0) * 100);
+
+    const getRiskLevel = (score) => {
+      if (score > 0.7) return "High";
+      if (score > 0.4) return "Medium";
+      return "Low";
+    };
+
+    const getRiskColor = (score) => {
+      if (score > 0.7) return "danger";
+      if (score > 0.4) return "warning";
+      return "success";
+    };
+
+    openModal(
+      `Risk Assessment — Query #${id}`,
+      `
+        <div class="risk-details">
+          <div class="risk-main">
+            <div class="risk-score-large">
+              <div class="risk-gauge" style="--risk-pct: ${riskPct}%">
+                <div class="risk-gauge-fill" style="background: ${riskPct > 70 ? "#ff3b30" : riskPct > 40 ? "#ff9f0a" : "#34c759"}"></div>
+              </div>
+              <div class="risk-text">
+                <div class="risk-value">${riskPct}%</div>
+                <div class="risk-label">${getRiskLevel(riskScore)} Risk</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="risk-components">
+            <h3 style="font-size:0.9rem; margin-bottom:12px; color:var(--text-primary)">Component Breakdown</h3>
+            
+            <div class="risk-component">
+              <div class="component-header">
+                <span class="component-name">Syntax Score</span>
+                <span class="component-value" style="color:${syntaxPct > 70 ? "#ff3b30" : syntaxPct > 40 ? "#ff9f0a" : "#34c759"}">${syntaxPct}%</span>
+              </div>
+              <div class="component-bar">
+                <div class="component-bar-fill" style="width:${syntaxPct}%; background:${syntaxPct > 70 ? "#ff3b30" : syntaxPct > 40 ? "#ff9f0a" : "#34c759"}"></div>
+              </div>
+            </div>
+
+            <div class="risk-component">
+              <div class="component-header">
+                <span class="component-name">Data Score</span>
+                <span class="component-value" style="color:${dataPct > 70 ? "#ff3b30" : dataPct > 40 ? "#ff9f0a" : "#34c759"}">${dataPct}%</span>
+              </div>
+              <div class="component-bar">
+                <div class="component-bar-fill" style="width:${dataPct}%; background:${dataPct > 70 ? "#ff3b30" : dataPct > 40 ? "#ff9f0a" : "#34c759"}"></div>
+              </div>
+            </div>
+
+            <div class="risk-component">
+              <div class="component-header">
+                <span class="component-name">Behavior Score</span>
+                <span class="component-value" style="color:${behaviorPct > 70 ? "#ff3b30" : behaviorPct > 40 ? "#ff9f0a" : "#34c759"}">${behaviorPct}%</span>
+              </div>
+              <div class="component-bar">
+                <div class="component-bar-fill" style="width:${behaviorPct}%; background:${behaviorPct > 70 ? "#ff3b30" : behaviorPct > 40 ? "#ff9f0a" : "#34c759"}"></div>
+              </div>
+            </div>
+
+            <div class="risk-component">
+              <div class="component-header">
+                <span class="component-name">Context Score</span>
+                <span class="component-value" style="color:${contextPct > 70 ? "#ff3b30" : contextPct > 40 ? "#ff9f0a" : "#34c759"}">${contextPct}%</span>
+              </div>
+              <div class="component-bar">
+                <div class="component-bar-fill" style="width:${contextPct}%; background:${contextPct > 70 ? "#ff3b30" : contextPct > 40 ? "#ff9f0a" : "#34c759"}"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `,
+    );
   }
 
   async function showVoteStatus(id) {
@@ -829,7 +926,9 @@ const Dashboard = (() => {
     $("#cfg-target-port").textContent = normalized.targetPort || "—";
 
     const blockDefault = $("#cfg-block-default");
-    blockDefault.textContent = normalized.blockByDefault ? "Enabled" : "Disabled";
+    blockDefault.textContent = normalized.blockByDefault
+      ? "Enabled"
+      : "Disabled";
     blockDefault.className = `setting-value badge ${normalized.blockByDefault ? "badge-warning" : "badge-success"}`;
 
     const peerApproval = $("#cfg-peer-approval");
@@ -842,11 +941,17 @@ const Dashboard = (() => {
 
     // Critical keywords
     const criticalEl = $("#cfg-critical-keywords");
-    criticalEl.innerHTML = renderKeywordTags(normalized.criticalKeywords, "critical");
+    criticalEl.innerHTML = renderKeywordTags(
+      normalized.criticalKeywords,
+      "critical",
+    );
 
     // Allowed keywords
     const allowedEl = $("#cfg-allowed-keywords");
-    allowedEl.innerHTML = renderKeywordTags(normalized.allowedKeywords, "allowed");
+    allowedEl.innerHTML = renderKeywordTags(
+      normalized.allowedKeywords,
+      "allowed",
+    );
   }
 
   function renderKeywordTags(keywords, type) {
@@ -984,6 +1089,32 @@ const Dashboard = (() => {
     }
   }
 
+  function statusBadge(status) {
+    if (!status) return '<span class="badge badge-neutral">—</span>';
+    const upper = status.toUpperCase();
+    if (upper === "APPROVED")
+      return `<span class="badge badge-success">✓ Approved</span>`;
+    if (upper === "REJECTED")
+      return `<span class="badge badge-danger">✗ Rejected</span>`;
+    if (upper === "PENDING")
+      return `<span class="badge badge-warning">⏳ Pending</span>`;
+    if (upper === "EXPIRED")
+      return `<span class="badge badge-coral">⌛ Expired</span>`;
+    return `<span class="badge badge-neutral">${escapeHtml(status)}</span>`;
+  }
+
+  function riskScoreBadge(score) {
+    if (score === null || score === undefined)
+      return '<span class="badge badge-neutral">—</span>';
+
+    const pct = Math.round(score * 100);
+    let color = "badge-success";
+    if (score > 0.7) color = "badge-danger";
+    else if (score > 0.4) color = "badge-warning";
+
+    return `<span class="badge ${color}" style="cursor:pointer" title="Click to see component scores">${pct}% Risk</span>`;
+  }
+
   function normalizeMetrics(raw) {
     const src = raw && typeof raw === "object" ? raw : {};
     return {
@@ -991,7 +1122,9 @@ const Dashboard = (() => {
       blockedQueries: Number(src.blockedQueries ?? src.queries_blocked ?? 0),
       approvedQueries: Number(src.approvedQueries ?? src.queries_approved ?? 0),
       rejectedQueries: Number(src.rejectedQueries ?? src.queries_rejected ?? 0),
-      activeConnections: Number(src.activeConnections ?? src.active_connections ?? 0),
+      activeConnections: Number(
+        src.activeConnections ?? src.active_connections ?? 0,
+      ),
       errors: Number(src.errors ?? src.error_count ?? 0),
     };
   }
@@ -1019,9 +1152,23 @@ const Dashboard = (() => {
       createdAt: src.createdAt ?? src.created_at ?? src.timestamp,
       resolvedAt: src.resolvedAt ?? src.resolved_at ?? null,
       resolvedBy: src.resolvedBy ?? src.approvedBy ?? src.resolved_by ?? "",
-      requiresPeerApproval: Boolean(src.requiresPeerApproval ?? src.requires_peer_approval),
-      approvalCount: Number(src.approvalCount ?? src.approvals ?? src.approval_count ?? 0),
-      rejectionCount: Number(src.rejectionCount ?? src.rejections ?? src.rejection_count ?? 0),
+      requiresPeerApproval: Boolean(
+        src.requiresPeerApproval ?? src.requires_peer_approval,
+      ),
+      approvalCount: Number(
+        src.approvalCount ?? src.approvals ?? src.approval_count ?? 0,
+      ),
+      rejectionCount: Number(
+        src.rejectionCount ?? src.rejections ?? src.rejection_count ?? 0,
+      ),
+      requiredApprovals: Number(
+        src.requiredApprovals ?? src.required_approvals ?? 0,
+      ),
+      riskScore: src.riskScore ?? src.risk_score ?? null,
+      syntaxScore: src.syntaxScore ?? src.syntax_score ?? null,
+      dataScore: src.dataScore ?? src.data_score ?? null,
+      behaviorScore: src.behaviorScore ?? src.behavior_score ?? null,
+      contextScore: src.contextScore ?? src.context_score ?? null,
     };
   }
 
@@ -1036,14 +1183,19 @@ const Dashboard = (() => {
         cfg.peer_approval_enabled ?? cfg.peerApprovalEnabled,
       ),
       minVotes: cfg.peer_approval_min_votes ?? cfg.minVotes,
-      criticalKeywords: normalizeKeywords(cfg.critical_keywords ?? cfg.criticalKeywords),
-      allowedKeywords: normalizeKeywords(cfg.allowed_keywords ?? cfg.allowedKeywords),
+      criticalKeywords: normalizeKeywords(
+        cfg.critical_keywords ?? cfg.criticalKeywords,
+      ),
+      allowedKeywords: normalizeKeywords(
+        cfg.allowed_keywords ?? cfg.allowedKeywords,
+      ),
     };
   }
 
   function normalizeKeywords(value) {
     if (!value) return [];
-    if (Array.isArray(value)) return value.map((v) => String(v).trim()).filter(Boolean);
+    if (Array.isArray(value))
+      return value.map((v) => String(v).trim()).filter(Boolean);
     return String(value)
       .split(",")
       .map((v) => v.trim())
@@ -1061,5 +1213,6 @@ const Dashboard = (() => {
     rejectQuery,
     deleteUser,
     showVoteStatus,
+    showRiskDetails,
   };
 })();
