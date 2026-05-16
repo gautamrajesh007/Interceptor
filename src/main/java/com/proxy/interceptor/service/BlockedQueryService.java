@@ -52,6 +52,10 @@ public class BlockedQueryService {
         // Dynamic Risk Scoring
         int requiredApprovals;
         Double riskScore = null;
+        Double syntaxScore = null;
+        Double dataScore = null;
+        Double behaviorScore = null;
+        Double contextScore = null;
 
         if (riskScoringProperties.isEnabled()) {
             // Evaluate query risk dynamically
@@ -59,6 +63,10 @@ public class BlockedQueryService {
             RiskAssessment riskAssessment = dynamicRiskService.evaluateQuery(sql, connId, clientIp);
             requiredApprovals = riskAssessment.requiredApprovals();
             riskScore = riskAssessment.riskScore();
+            syntaxScore = riskAssessment.syntaxScore();
+            dataScore = riskAssessment.dataScore();
+            behaviorScore = riskAssessment.behaviorScore();
+            contextScore = riskAssessment.contextScore();
 
             log.info("DRS: Query from {} scored R={} → {} approvals required",
                     connId, String.format("%.3f", riskScore), requiredApprovals);
@@ -75,6 +83,10 @@ public class BlockedQueryService {
                 .requiresPeerApproval(approvalProperties.isPeerEnabled())
                 .requiredApprovals(requiredApprovals)
                 .riskScore(riskScore)
+                .syntaxScore(syntaxScore)
+                .dataScore(dataScore)
+                .behaviorScore(behaviorScore)
+                .contextScore(contextScore)
                 .nonce(nonce)
                 .build();
 
