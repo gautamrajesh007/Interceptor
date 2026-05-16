@@ -68,6 +68,18 @@ public class BlockedQuery {
     @Column
     private Double riskScore;
 
+    @Column
+    private Double syntaxScore;
+
+    @Column
+    private Double dataScore;
+
+    @Column
+    private Double behaviorScore;
+
+    @Column
+    private Double contextScore;
+
     // Nonce for replay attack protection
     @Column(unique = true)
     private String nonce;
