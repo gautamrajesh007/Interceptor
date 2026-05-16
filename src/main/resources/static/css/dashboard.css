@@ -480,8 +480,13 @@ table {
 /* Sidebar Footer */
 .sidebar-footer {
   position: relative;
-  padding: 16px;
+  padding: 20px 16px;
   border-top: 1px solid var(--border);
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(114, 63, 235, 0.02) 100%
+  );
 }
 
 /* Glassmorphism accent */
@@ -507,8 +512,17 @@ table {
   z-index: 1;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  padding: 8px 0;
+  padding: 8px;
+  margin-bottom: 12px;
+  border-radius: var(--r-md);
+  background: rgba(114, 63, 235, 0.04);
+  transition: background var(--duration) var(--ease);
+}
+
+.user-info:hover {
+  background: rgba(114, 63, 235, 0.08);
 }
 
 .avatar {
@@ -524,67 +538,81 @@ table {
   font-size: 0.9rem;
   flex-shrink: 0;
   position: relative;
+  box-shadow: 0 2px 8px rgba(114, 63, 235, 0.2);
 }
 
 .avatar::after {
   content: "";
   position: absolute;
-  bottom: 1px;
-  right: 1px;
-  width: 10px;
-  height: 10px;
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
   background: var(--success);
   border-radius: 50%;
-  border: 2px solid var(--bg-sidebar);
+  border: 2.5px solid var(--bg-sidebar);
+  box-shadow: 0 0 0 1px rgba(52, 199, 89, 0.3);
 }
 
 .user-details {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  flex: 1;
+  justify-content: center;
 }
 
 .user-details .username {
-  font-size: 0.87rem;
+  font-size: 0.85rem;
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.2;
 }
 
 .role-badge {
   display: inline-block;
-  font-size: 0.65rem;
+  font-size: 0.62rem;
   font-weight: 700;
   color: var(--purple);
   background: var(--purple-pale);
-  padding: 2px 8px;
-  border-radius: 20px;
+  padding: 3px 8px;
+  border-radius: 12px;
   letter-spacing: 0.5px;
   width: fit-content;
+  margin-top: 2px;
 }
 
 .logout-btn {
   position: relative;
   z-index: 1;
-  margin-top: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
   width: 100%;
-  padding: 10px;
-  border-radius: var(--r-sm);
-  font-size: 0.82rem;
-  font-weight: 500;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  font-size: 0.8rem;
+  font-weight: 600;
   color: var(--text-secondary);
+  background: rgba(255, 59, 48, 0.04);
+  border: 1px solid rgba(255, 59, 48, 0.1);
   transition: all var(--duration) var(--ease);
+  gap: 6px;
 }
 
 .logout-btn:hover {
   background: var(--danger-pale);
   color: var(--danger);
+  border-color: var(--danger-pale);
+  box-shadow: 0 2px 8px rgba(255, 59, 48, 0.15);
+}
+
+.logout-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* ═══════════════════════════════════════
@@ -1616,6 +1644,113 @@ table {
   justify-content: space-between;
   font-size: 0.8rem;
   color: var(--text-secondary);
+}
+
+/* ═══════════════════════════════════════
+   RISK ASSESSMENT MODAL
+   ═══════════════════════════════════════ */
+.risk-details {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.risk-main {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.risk-score-large {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: var(--border-light);
+  border-radius: var(--r-lg);
+  padding: 24px;
+  width: 100%;
+}
+
+.risk-gauge {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f0f0f0, #e8e8e8);
+  position: relative;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.risk-gauge-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: var(--risk-pct);
+  transition: height 0.5s var(--ease);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.risk-text {
+  flex: 1;
+  text-align: center;
+}
+
+.risk-value {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.risk-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.risk-components {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.risk-component {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.component-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.component-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.component-value {
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.component-bar {
+  height: 8px;
+  background: var(--border-light);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.component-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s var(--ease);
 }
 
 /* ═══════════════════════════════════════
